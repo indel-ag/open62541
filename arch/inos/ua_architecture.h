@@ -9,9 +9,24 @@
 #ifndef PLUGINS_ARCH_INOS_UA_ARCHITECTURE_H_
 #define PLUGINS_ARCH_INOS_UA_ARCHITECTURE_H_
 
-#include "ua_lwip.h"
+#undef UA_ENABLE_DISCOVERY_SEMAPHORE
+//#define UA_ENABLE_DISCOVERY_MULTICAST
 
+
+#define UA_free free
+#define UA_malloc malloc
+#define UA_calloc calloc
+#define UA_realloc realloc
+#define UA_snprintf snprintf
+#define UA_sleep_ms(X) sleep_ms_inos(X)
+#define UA_LOG_SOCKET_ERRNO_WRAP(LOG) { \
+    char *errno_str = ""; \
+    LOG; \
+}
+
+#include "ua_lwip.h"
 #include <open62541/architecture_functions.h>
+//#include "ua_inos_sys.h"
 
 #endif /* PLUGINS_ARCH_INOS_UA_ARCHITECTURE_H_ */
 

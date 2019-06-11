@@ -4,10 +4,10 @@
  *    Copyright 2019 (c) Christoph Hirzel, Indel AG
  */
 
-#ifdef UA_ARCHITECTURE_FREERTOSLWIP
+#ifdef UA_ARCHITECTURE_INOS
 
 #include <open62541/types.h>
-#include <task.h>
+#include "ua_inos_sys.h"
 
 /* The current time in UTC time */
 UA_DateTime UA_DateTime_now(void) {
@@ -18,7 +18,7 @@ UA_DateTime UA_DateTime_now(void) {
 
 /* Offset between local time and UTC time */
 UA_Int64 UA_DateTime_localTimeUtcOffset(void) {
-    struct tm *ptm;
+/*    struct tm *ptm;
     struct tm gbuf;
     ptm = gmtime_r(&rawtime, &gbuf);
     // Request that mktime() looksup dst in timezone database
@@ -26,6 +26,8 @@ UA_Int64 UA_DateTime_localTimeUtcOffset(void) {
     gmt = mktime(ptm);
 
 	return (UA_Int64) (difftime(rawtime, gmt) * UA_DATETIME_SEC);
+	*/
+	return 0;
 }
 
 /* CPU clock invariant to system time changes. Use only to measure durations,

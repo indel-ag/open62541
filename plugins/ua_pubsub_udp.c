@@ -5,7 +5,7 @@
  * Copyright (c) 2017-2018 Fraunhofer IOSB (Author: Andreas Ebner)
  * Copyright 2018 (c) Jose Cabral, fortiss GmbH
  */
-
+#if 0
 #include <open62541/plugin/log_stdout.h>
 #include <open62541/plugin/pubsub_udp.h>
 #include <open62541/util.h>
@@ -451,3 +451,4 @@ UA_PubSubTransportLayerUDPMP() {
     pubSubTransportLayer.createPubSubChannel = &TransportLayerUDPMC_addChannel;
     return pubSubTransportLayer;
 }
+#endif

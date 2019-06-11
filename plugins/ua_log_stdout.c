@@ -14,6 +14,9 @@
 #include <pthread.h>
 static pthread_mutex_t printf_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
+#ifdef INOS
+#include <open62541\inos\ua_inos_sys.h>
+#endif
 
 /* ANSI escape sequences for color output taken from here:
  * https://stackoverflow.com/questions/3219393/stdlib-and-colored-output-in-c*/
@@ -50,7 +53,10 @@ __attribute__((__format__(__printf__, 4 , 0)))
 void
 UA_Log_Stdout_log(void *_, UA_LogLevel level, UA_LogCategory category,
                   const char *msg, va_list args) {
-    UA_Int64 tOffset = UA_DateTime_localTimeUtcOffset();
+#if defined(INOS)
+	UA_Log_Stdout_inos(level, logLevelNames[level], logCategoryNames[category], msg, args);
+#else
+	UA_Int64 tOffset = UA_DateTime_localTimeUtcOffset();
     UA_DateTimeStruct dts = UA_DateTime_toStruct(UA_DateTime_now() + tOffset);
 
 #ifdef UA_ENABLE_MULTITHREADING
@@ -66,6 +72,7 @@ UA_Log_Stdout_log(void *_, UA_LogLevel level, UA_LogCategory category,
 
 #ifdef UA_ENABLE_MULTITHREADING
     pthread_mutex_unlock(&printf_mutex);
+#endif
 #endif
 }
 

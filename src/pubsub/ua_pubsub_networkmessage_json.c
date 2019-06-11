@@ -4,7 +4,7 @@
  *
  * Copyright (c) 2019 Fraunhofer IOSB (Author: Lukas Meling)
  */
-
+#if 0
 #include <open62541/types.h>
 #include <open62541/types_generated_handling.h>
 
@@ -534,3 +534,4 @@ status UA_NetworkMessage_decodeJson(UA_NetworkMessage *dst, const UA_ByteString 
     UA_free(parseCtx.tokenArray);
     return ret;
 }
+#endif
