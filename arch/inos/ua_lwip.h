@@ -76,10 +76,6 @@
 
 #if UA_IPV6
 # define UA_if_nametoindex lwip_if_nametoindex
-
-# if LWIP_VERSION_IS_RELEASE //lwip_if_nametoindex is not yet released
-unsigned int lwip_if_nametoindex(const char *ifname);
-# endif
 #endif
 
 int gethostname_lwip(char* name, size_t len); //gethostname is not present in LwIP. We implement here a dummy. See ../freertosLWIP/ua_architecture_functions.c
