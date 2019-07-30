@@ -4,7 +4,7 @@
  *
  *   Copyright 2018 (c) Kontron Europe GmbH (Author: Rudolf Hoyler)
  */
-#if 0
+
 #include <open62541/plugin/log_stdout.h>
 #include <open62541/plugin/pubsub_ethernet.h>
 #include <open62541/util.h>
@@ -445,4 +445,3 @@ UA_PubSubTransportLayerEthernet() {
     pubSubTransportLayer.createPubSubChannel = &TransportLayerEthernet_addChannel;
     return pubSubTransportLayer;
 }
-#endif
