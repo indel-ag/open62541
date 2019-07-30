@@ -16,6 +16,10 @@ import subprocess
 BUILD_DIR = "build"
 ARCHITECTURE = sys.argv[1] if len(sys.argv) > 1 else None
 
+OPTIONS = [
+	'UA_ENABLE_PUBSUB',
+]
+
 #-------------------------------------------------------------------------------
 # Functions
 #-------------------------------------------------------------------------------
@@ -35,7 +39,7 @@ def build_win():
 	]
 			
 	# call cmake
-	subprocess.check_call([CMAKE, '-DUA_ARCHITECTURE:STRING=' + ARCHITECTURE, '-G', COMPILER, '..'], cwd=BUILD_DIR)
+	subprocess.check_call([CMAKE, '-DUA_ARCHITECTURE:STRING=' + ARCHITECTURE, '-G', COMPILER, '..'] + ['-D%s=on' % option for option in OPTIONS], cwd=BUILD_DIR)
 	# build projects
 	for project in PROJECTS:
 		subprocess.check_call([MSBUILD, project], cwd=BUILD_DIR)
