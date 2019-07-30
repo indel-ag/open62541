@@ -34,7 +34,18 @@
 #define UA_fd_set(fd, fds) FD_SET((unsigned int)fd, fds)
 #define UA_fd_isset(fd, fds) FD_ISSET((unsigned int)fd, fds)
 
+/*
+ * NOTE: We cannot use IPv6 with enabled PubSub support, as LwIP is currently missing
+ * some required socket options (IPV6_MULTICAST_LOOP, IPV6_MULTICAST_HOPS and IPV6_MULTICAST_IF).
+ *
+ * See https://savannah.nongnu.org/bugs/?func=detailitem&item_id=56695
+ */
+#ifdef UA_ENABLE_PUBSUB
+#define UA_IPV6 0
+#else
 #define UA_IPV6 LWIP_IPV6
+#endif
+
 #define UA_SOCKET int
 #define UA_INVALID_SOCKET -1
 #define UA_ERRNO errno
