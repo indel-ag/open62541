@@ -7,7 +7,10 @@
 //#include <stddef.h>
 //#include <wchar.h>
 #include <inttypes.h>
+#ifndef INOS
 #include <endian.h>
+#endif
+
 
 
 //#include <stdio.h>
