@@ -548,7 +548,7 @@ ENCODE_JSON(String) {
         size_t length;
 
         while(end < lim) {
-            end = utf8_iterate(pos, (size_t)(lim - pos), (int32_t *)&codepoint);
+            end = ua_utf8_iterate(pos, (size_t)(lim - pos), (int32_t *)&codepoint);
             if(!end)
                 return UA_STATUSCODE_BADENCODINGERROR;
 
@@ -2144,7 +2144,7 @@ DECODE_JSON(String) {
         /* Unicode */
         if(p + 4 >= end)
             goto cleanup;
-        int32_t value_signed = decode_unicode_escape(p);
+        int32_t value_signed = ua_decode_unicode_escape(p);
         if(value_signed < 0)
             goto cleanup;
         uint32_t value = (uint32_t)value_signed;
@@ -2156,7 +2156,7 @@ DECODE_JSON(String) {
                 goto cleanup;
             if(*p != '\\' || *(p + 1) != 'u')
                 goto cleanup;
-            int32_t value2 = decode_unicode_escape(p + 1);
+            int32_t value2 = ua_decode_unicode_escape(p + 1);
             if(value2 < 0xDC00 || value2 > 0xDFFF)
                 goto cleanup;
             value = ((value - 0xD800u) << 10u) + (uint32_t)((value2 - 0xDC00) + 0x10000);
@@ -2167,7 +2167,7 @@ DECODE_JSON(String) {
         }
 
         size_t length;
-        if(utf8_encode((int32_t)value, pos, &length))
+        if(ua_utf8_encode((int32_t)value, pos, &length))
             goto cleanup;
 
         pos += length;

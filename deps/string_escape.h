@@ -22,12 +22,12 @@ extern "C" {
 #define l_isdigit(c)  ('0' <= (c) && (c) <= '9')
 #define l_isxdigit(c) (l_isdigit(c) || ('A' <= (c) && (c) <= 'F') || ('a' <= (c) && (c) <= 'f'))
 
-int utf8_encode(int32_t codepoint, char *buffer, size_t *size);
-size_t utf8_check_first(char byte);
-size_t utf8_check_full(const char *buffer, size_t size, int32_t *codepoint);
-const char *utf8_iterate(const char *buffer, size_t size, int32_t *codepoint);
-int utf8_check_string(const char *string, size_t length);
-int32_t decode_unicode_escape(const char *str);
+int ua_utf8_encode(int32_t codepoint, char *buffer, size_t *size);
+size_t ua_utf8_check_first(char byte);
+size_t ua_utf8_check_full(const char *buffer, size_t size, int32_t *codepoint);
+const char *ua_utf8_iterate(const char *buffer, size_t size, int32_t *codepoint);
+int ua_utf8_check_string(const char *string, size_t length);
+int32_t ua_decode_unicode_escape(const char *str);
 
 #ifdef __cplusplus
 }

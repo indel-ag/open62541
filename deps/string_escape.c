@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 
 
-size_t utf8_check_first(char byte)
+size_t ua_utf8_check_first(char byte)
 {
     unsigned char u = (unsigned char)byte;
 
@@ -65,7 +65,7 @@ size_t utf8_check_first(char byte)
     }
 }
 
-size_t utf8_check_full(const char *buffer, size_t size, int32_t *codepoint)
+size_t ua_utf8_check_full(const char *buffer, size_t size, int32_t *codepoint)
 {
     size_t i;
     int32_t value = 0;
@@ -121,7 +121,7 @@ size_t utf8_check_full(const char *buffer, size_t size, int32_t *codepoint)
     return 1;
 }
 
-const char *utf8_iterate(const char *buffer, size_t bufsize, int32_t *codepoint)
+const char *ua_utf8_iterate(const char *buffer, size_t bufsize, int32_t *codepoint)
 {
     size_t count;
     int32_t value;
@@ -129,7 +129,7 @@ const char *utf8_iterate(const char *buffer, size_t bufsize, int32_t *codepoint)
     if(!bufsize)
         return buffer;
 
-    count = utf8_check_first(buffer[0]);
+    count = ua_utf8_check_first(buffer[0]);
     if(count <= 0)
         return NULL;
 
@@ -137,7 +137,7 @@ const char *utf8_iterate(const char *buffer, size_t bufsize, int32_t *codepoint)
         value = (unsigned char)buffer[0];
     else
     {
-        if(count > bufsize || !utf8_check_full(buffer, count, &value))
+        if(count > bufsize || !ua_utf8_check_full(buffer, count, &value))
             return NULL;
     }
 
@@ -148,7 +148,7 @@ const char *utf8_iterate(const char *buffer, size_t bufsize, int32_t *codepoint)
 }
 
 /* String unescape functions */
-int utf8_encode(int32_t codepoint, char *buffer, size_t *size)
+int ua_utf8_encode(int32_t codepoint, char *buffer, size_t *size)
 {
     if(codepoint < 0)
         return -1;
@@ -185,7 +185,7 @@ int utf8_encode(int32_t codepoint, char *buffer, size_t *size)
 }
 
 /* assumes that str points to 'u' plus at least 4 valid hex digits */
-int32_t decode_unicode_escape(const char *str) {
+int32_t ua_decode_unicode_escape(const char *str) {
     int i;
     int32_t value = 0;
 
