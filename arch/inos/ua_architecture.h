@@ -28,6 +28,8 @@
 #include <open62541/architecture_functions.h>
 //#include "ua_inos_sys.h"
 
+//! TODO discovery semaphore currently not supported under INOS,
+//! as it requires some file system API (access())
 #endif /* PLUGINS_ARCH_INOS_UA_ARCHITECTURE_H_ */
 
 #endif /* UA_ARCHITECTURE_INOS */
