@@ -15,7 +15,7 @@
 static pthread_mutex_t printf_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 #ifdef INOS
-#include "inos\ua_inos_sys.h"
+#include "inos/ua_inos_sys.h"
 #endif
 
 /* ANSI escape sequences for color output taken from here:
