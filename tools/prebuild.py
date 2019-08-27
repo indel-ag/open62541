@@ -18,6 +18,7 @@ ARCHITECTURE = sys.argv[1] if len(sys.argv) > 1 else None
 
 OPTIONS = [
 	'UA_ENABLE_PUBSUB',
+	'UA_ENABLE_SUBSCRIPTION_EVENTS',
 ]
 
 #-------------------------------------------------------------------------------
