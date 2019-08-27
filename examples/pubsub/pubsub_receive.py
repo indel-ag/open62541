@@ -1,11 +1,14 @@
 import socket
-import struct
+import binascii
 import sys
+
 
 MCAST_GRP = '224.0.0.22'
 MCAST_PORT = 4840
 MCAST_IFACE = '192.168.1.31' # TODO parametrize to use own interface IP
 IS_ALL_GROUPS = True
+
+echo_mode = '-e' in sys.argv
 
 print("available interfaces:")
 print(socket.gethostbyname_ex(socket.gethostname()))
@@ -33,7 +36,14 @@ try:
 		try:
 			(data, sender) = sock.recvfrom(2048)
 			counter += 1
-			print("[%d] received %d bytes from %s" % (counter, len(data), sender))
+			print("[%d] received %d bytes from %s: %s" % (counter, len(data), sender, binascii.hexlify(data)))
+			
+			if echo_mode:
+				print("echoing")
+				sock.sendto(data, (MCAST_GRP, MCAST_PORT))
+				break
+			# end if
+			
 		except socket.timeout:
 			sys.stdout.write('.')
 		# end try
