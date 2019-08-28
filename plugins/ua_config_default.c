@@ -13,6 +13,9 @@
 
 #include <open62541/client_config_default.h>
 #include <open62541/network_tcp.h>
+#ifdef UA_ENABLE_WEBSOCKET_SERVER
+#include <open62541/network_ws.h>
+#endif
 #include <open62541/plugin/accesscontrol_default.h>
 #include <open62541/plugin/log_stdout.h>
 #include <open62541/plugin/pki_default.h>
@@ -55,6 +58,7 @@ const UA_ConnectionConfig UA_ConnectionConfig_default = {
 #define PRODUCT_URI "http://open62541.org"
 #define APPLICATION_NAME "open62541-based OPC UA Application"
 #define APPLICATION_URI "urn:unconfigured:application"
+#define APPLICATION_URI_SERVER "urn:open62541.server.application"
 
 #define STRINGIFY(arg) #arg
 #define VERSION(MAJOR, MINOR, PATCH, LABEL) \
@@ -107,6 +111,8 @@ setDefaultConfig(UA_ServerConfig *conf) {
     conf->nThreads = 1;
     conf->logger = UA_Log_Stdout_;
 
+    conf->shutdownDelay = 0.0;
+
     /* Server Description */
     conf->buildInfo.productUri = UA_STRING_ALLOC(PRODUCT_URI);
     conf->buildInfo.manufacturerName = UA_STRING_ALLOC(MANUFACTURER_NAME);
@@ -119,9 +125,9 @@ setDefaultConfig(UA_ServerConfig *conf) {
     #else
     conf->buildInfo.buildNumber = UA_STRING_ALLOC(__DATE__ " " __TIME__);
     #endif
-    conf->buildInfo.buildDate = 0;
+    conf->buildInfo.buildDate = UA_DateTime_now();
 
-    conf->applicationDescription.applicationUri = UA_STRING_ALLOC(APPLICATION_URI);
+    conf->applicationDescription.applicationUri = UA_STRING_ALLOC(APPLICATION_URI_SERVER);
     conf->applicationDescription.productUri = UA_STRING_ALLOC(PRODUCT_URI);
     conf->applicationDescription.applicationName =
         UA_LOCALIZEDTEXT_ALLOC("en", APPLICATION_NAME);
@@ -223,6 +229,57 @@ addDefaultNetworkLayers(UA_ServerConfig *conf, UA_UInt16 portNumber,
                         UA_UInt32 sendBufferSize, UA_UInt32 recvBufferSize) {
     return UA_ServerConfig_addNetworkLayerTCP(conf, portNumber, sendBufferSize, recvBufferSize);
 }
+
+static UA_StatusCode
+addDiscoveryUrl(UA_ServerConfig *config, UA_UInt16 portNumber) {
+    config->applicationDescription.discoveryUrlsSize = 1;
+    UA_String *discurl = (UA_String *) UA_Array_new(1, &UA_TYPES[UA_TYPES_STRING]);
+    char discoveryUrlBuffer[220];
+    if (config->customHostname.length) {
+        UA_snprintf(discoveryUrlBuffer, 220, "opc.tcp://%.*s:%d/",
+                    (int)config->customHostname.length,
+                    config->customHostname.data,
+                    portNumber);
+    } else {
+        char hostnameBuffer[200];
+        if(UA_gethostname(hostnameBuffer, 200) == 0) {
+            UA_snprintf(discoveryUrlBuffer, 220, "opc.tcp://%s:%d/", hostnameBuffer, portNumber);
+        } else {
+            UA_LOG_ERROR(&config->logger, UA_LOGCATEGORY_NETWORK, "Could not get the hostname");
+        }
+    }
+    discurl[0] = UA_String_fromChars(discoveryUrlBuffer);
+    config->applicationDescription.discoveryUrls = discurl;
+    return UA_STATUSCODE_GOOD;
+}
+
+
+#ifdef UA_ENABLE_WEBSOCKET_SERVER
+UA_EXPORT UA_StatusCode
+UA_ServerConfig_addNetworkLayerWS(UA_ServerConfig *conf, UA_UInt16 portNumber,
+                                   UA_UInt32 sendBufferSize, UA_UInt32 recvBufferSize) {
+    /* Add a network layer */
+    UA_ServerNetworkLayer *tmp = (UA_ServerNetworkLayer *)
+        UA_realloc(conf->networkLayers, sizeof(UA_ServerNetworkLayer) * (1 + conf->networkLayersSize));
+    if(!tmp)
+        return UA_STATUSCODE_BADOUTOFMEMORY;
+    conf->networkLayers = tmp;
+
+    UA_ConnectionConfig config = UA_ConnectionConfig_default;
+    if (sendBufferSize > 0)
+        config.sendBufferSize = sendBufferSize;
+    if (recvBufferSize > 0)
+        config.recvBufferSize = recvBufferSize;
+
+    conf->networkLayers[conf->networkLayersSize] =
+        UA_ServerNetworkLayerWS(config, portNumber, &conf->logger);
+    if (!conf->networkLayers[conf->networkLayersSize].handle)
+        return UA_STATUSCODE_BADOUTOFMEMORY;
+    conf->networkLayersSize++;
+
+    return UA_STATUSCODE_GOOD;
+}
+#endif
 
 UA_EXPORT UA_StatusCode
 UA_ServerConfig_addNetworkLayerTCP(UA_ServerConfig *conf, UA_UInt16 portNumber,
@@ -363,6 +420,12 @@ UA_ServerConfig_setMinimalCustomBuffer(UA_ServerConfig *config, UA_UInt16 portNu
 
     retval = addDefaultNetworkLayers(config, portNumber, sendBufferSize, recvBufferSize);
     if(retval != UA_STATUSCODE_GOOD) {
+        UA_ServerConfig_clean(config);
+        return retval;
+    }
+
+    retval = addDiscoveryUrl(config, portNumber);
+    if (retval != UA_STATUSCODE_GOOD) {
         UA_ServerConfig_clean(config);
         return retval;
     }
@@ -567,6 +630,12 @@ UA_ServerConfig_setDefaultWithSecurityPolicies(UA_ServerConfig *conf,
 
     retval = addDefaultNetworkLayers(conf, portNumber, 0, 0);
     if(retval != UA_STATUSCODE_GOOD) {
+        UA_ServerConfig_clean(conf);
+        return retval;
+    }
+
+    retval = addDiscoveryUrl(conf, portNumber);
+    if (retval != UA_STATUSCODE_GOOD) {
         UA_ServerConfig_clean(conf);
         return retval;
     }

@@ -480,7 +480,7 @@ processMSGDecoded(UA_Server *server, UA_SecureChannel *channel, UA_UInt32 reques
     UA_Session anonymousSession;
     if(!session) {
         if(sessionRequired) {
-#ifdef UA_ENABLE_TYPENAMES
+#ifdef UA_ENABLE_TYPEDESCRIPTION
             UA_LOG_WARNING_CHANNEL(&server->config.logger, channel,
                                    "%s refused without a valid session",
                                    requestType->typeName);
@@ -503,7 +503,7 @@ processMSGDecoded(UA_Server *server, UA_SecureChannel *channel, UA_UInt32 reques
      * CloseSessionRequest */
     if(sessionRequired && !session->activated &&
        requestType != &UA_TYPES[UA_TYPES_CLOSESESSIONREQUEST]) {
-#ifdef UA_ENABLE_TYPENAMES
+#ifdef UA_ENABLE_TYPEDESCRIPTION
         UA_LOG_WARNING_SESSION(&server->config.logger, session,
                                "%s refused on a non-activated session",
                                requestType->typeName);
@@ -669,32 +669,25 @@ createSecureChannel(void *application, UA_Connection *connection,
     UA_Server *server = (UA_Server*)application;
 
     /* Iterate over available endpoints and choose the correct one */
-    UA_EndpointDescription *endpoint = NULL;
     UA_SecurityPolicy *securityPolicy = NULL;
-    for(size_t i = 0; i < server->config.endpointsSize; ++i) {
-        UA_EndpointDescription *endpointCandidate = &server->config.endpoints[i];
-        if(!UA_ByteString_equal(&asymHeader->securityPolicyUri,
-                                &endpointCandidate->securityPolicyUri))
+    for(size_t i = 0; i < server->config.securityPoliciesSize; ++i) {
+        UA_SecurityPolicy *policy = &server->config.securityPolicies[i];
+        if(!UA_ByteString_equal(&asymHeader->securityPolicyUri, &policy->policyUri))
             continue;
-        securityPolicy = UA_SecurityPolicy_getSecurityPolicyByUri(server,
-                            (UA_ByteString*)&endpointCandidate->securityPolicyUri);
-        if(!securityPolicy)
-            return UA_STATUSCODE_BADINTERNALERROR;
 
-        UA_StatusCode retval = securityPolicy->asymmetricModule.
-            compareCertificateThumbprint(securityPolicy,
-                                         &asymHeader->receiverCertificateThumbprint);
+        UA_StatusCode retval = policy->asymmetricModule.
+            compareCertificateThumbprint(policy, &asymHeader->receiverCertificateThumbprint);
         if(retval != UA_STATUSCODE_GOOD)
             continue;
 
-        /* We found the correct endpoint (except for security mode) The endpoint
-         * needs to be changed by the client / server to match the security
-         * mode. The server does this in the securechannel manager */
-        endpoint = endpointCandidate;
+        /* We found the correct policy (except for security mode). The endpoint
+         * needs to be selected by the client / server to match the security
+         * mode in the endpoint for the session. */
+        securityPolicy = policy;
         break;
     }
 
-    if(!endpoint)
+    if(!securityPolicy)
         return UA_STATUSCODE_BADSECURITYPOLICYREJECTED;
 
     /* Create a new channel */
@@ -817,7 +810,7 @@ UA_Server_processBinaryMessage(UA_Server *server, UA_Connection *connection,
     UA_SecureChannel_persistIncompleteMessages(connection->channel);
 }
 
-#ifdef UA_ENABLE_MULTITHREADING
+#if UA_MULTITHREADING >= 200
 static void
 deleteConnection(UA_Server *server, UA_Connection *connection) {
     connection->free(connection);
@@ -827,9 +820,7 @@ deleteConnection(UA_Server *server, UA_Connection *connection) {
 void
 UA_Server_removeConnection(UA_Server *server, UA_Connection *connection) {
     UA_Connection_detachSecureChannel(connection);
-#ifndef UA_ENABLE_MULTITHREADING
-    connection->free(connection);
-#else
+#if UA_MULTITHREADING >= 200
     UA_DelayedCallback *dc = (UA_DelayedCallback*)UA_malloc(sizeof(UA_DelayedCallback));
     if(!dc)
         return; /* Malloc cannot fail on OS's that support multithreading. They
@@ -838,5 +829,7 @@ UA_Server_removeConnection(UA_Server *server, UA_Connection *connection) {
     dc->application = server;
     dc->data = connection;
     UA_WorkQueue_enqueueDelayed(&server->workQueue, dc);
+#else
+    connection->free(connection);
 #endif
 }
