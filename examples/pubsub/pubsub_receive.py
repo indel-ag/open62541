@@ -39,8 +39,9 @@ try:
 			print("[%d] received %d bytes from %s: %s" % (counter, len(data), sender, binascii.hexlify(data)))
 			
 			if echo_mode:
-				print("echoing")
-				sock.sendto(data, (MCAST_GRP, MCAST_PORT))
+				dest = (MCAST_GRP, sender[1])
+				print("echoing to " + str(dest))
+				sock.sendto(data, dest)
 				break
 			# end if
 			
