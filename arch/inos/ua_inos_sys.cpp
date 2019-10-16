@@ -88,41 +88,6 @@ int getnameinfo_inos(const struct sockaddr_storage* addr,
 	}
 }
 
-//------------------------------------------------------------------------------
-//
-void UA_Log_Stdout_inos(UA_LogLevel level,
-	const char* levelStr, const char* categoryStr,
-	const char *msg, va_list args)
-{
-	// format message
-	char cFmtMsg [256];
-	vsnprintf(cFmtMsg, sizeof(cFmtMsg), msg, args);
-	// ensure null-termination
-	cFmtMsg[sizeof(cFmtMsg)-1] = 0;
-
-	// trace according to log level
-	switch (level) {
-	case UA_LOGLEVEL_ERROR:
-	case UA_LOGLEVEL_FATAL:
-		INOS_ERROR("[UA:%s:%s] %s", categoryStr, levelStr, cFmtMsg);
-		break;
-	case UA_LOGLEVEL_WARNING:
-		INOS_WARNING("[UA:%s:%s] %s", categoryStr, levelStr, cFmtMsg);
-		break;
-	case UA_LOGLEVEL_INFO:
-		INOS_MESSAGE("[UA:%s:%s] %s", categoryStr, levelStr, cFmtMsg);
-		break;
-	case UA_LOGLEVEL_DEBUG:
-	case UA_LOGLEVEL_TRACE:
-		INOS_VERBOSE("[UA:%s:%s] %s", categoryStr, levelStr, cFmtMsg);
-		break;
-	default:
-		// trace error for unknown log levels to ensure visibility
-		INOS_ERROR("[UA:%s:%s???] %s", categoryStr, levelStr, cFmtMsg);
-		break;
-	}
-
-}
 
 //------------------------------------------------------------------------------
 //

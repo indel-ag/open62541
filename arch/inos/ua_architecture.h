@@ -26,7 +26,7 @@
 
 #include "ua_lwip.h"
 #include <open62541/architecture_functions.h>
-//#include "ua_inos_sys.h"
+#include "ua_inos_sys.h"
 
 //! TODO discovery semaphore currently not supported under INOS,
 //! as it requires some file system API (access())

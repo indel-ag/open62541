@@ -1,3 +1,4 @@
+#ifdef UA_ENABLE_CUSTOM_LIBC
 /* Originally released by the musl project (http://www.musl-libc.org/) under the
  * MIT license. Taken from the file src/internal/floatscan.c*/
 
@@ -717,3 +718,4 @@ long double __floatscan(char* input, int prec, int pok)
 
 	return decfloat(input, &index, c, bits, emin, sign, pok);
 }
+#endif // UA_ENABLE_CUSTOM_LIBC

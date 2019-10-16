@@ -16,8 +16,6 @@
 #include <stddef.h> // size_t
 #include <lwip/sockets.h>
 
-// project
-#include <open62541/plugin/log_stdout.h> // UA_LogLevel
 
 //------------------------------------------------------------------------------
 //
@@ -41,9 +39,6 @@ void sleep_ms_inos(int aiMs);
 int getnameinfo_inos(const struct sockaddr_storage* addr,
 		char* host, socklen_t hostlen);
 
-void UA_Log_Stdout_inos(UA_LogLevel level,
-		const char* levelStr, const char* categoryStr,
-		const char *msg, va_list args);
 
 //------------------------------------------------------------------------------
 //

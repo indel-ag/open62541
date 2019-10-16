@@ -120,7 +120,8 @@ encodeWithExchangeBuffer(const void *ptr, const UA_DataType *type, Ctx *ctx) {
 
 #if !UA_BINARY_OVERLAYABLE_INTEGER
 
-#pragma message "Integer endianness could not be detected to be little endian. Use slow generic encoding."
+//#pragma message "Integer endianness could not be detected to be little endian. Use slow generic encoding."
+
 
 /* These en/decoding functions are only used when the architecture isn't little-endian. */
 static void
@@ -296,7 +297,7 @@ DECODE_BINARY(UInt64) {
 
 #include <math.h>
 
-#pragma message "No native IEEE 754 format detected. Use slow generic encoding."
+//#pragma message "No native IEEE 754 format detected. Use slow generic encoding."
 
 /* Handling of IEEE754 floating point values was taken from Beej's Guide to
  * Network Programming (http://beej.us/guide/bgnet/) and enhanced to cover the
