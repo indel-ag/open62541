@@ -54,6 +54,7 @@
                              pthread_mutex_unlock(&mutexName);
 #define UA_LOCK_SWITCH(currentMutex, newMutex)  UA_UNLOCK(currentMutex) \
                                                 UA_LOCK(newMutex)
+#define UA_LOCK_ASSERT(mutexName, num) UA_assert(mutexName##Counter == num);												
 #else
 #define UA_LOCK_TYPE_NAME
 #define UA_LOCK_TYPE(mutexName)
@@ -62,6 +63,7 @@
 #define UA_LOCK(mutexName)
 #define UA_UNLOCK(mutexName)
 #define UA_LOCK_SWITCH(currentMutex, newMutex)
+#define UA_LOCK_ASSERT(mutexName, num)
 #endif
 
 
