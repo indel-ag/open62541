@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-
 # Sonar code quality
 if ! [ -z ${SONAR+x} ]; then
     if ([ "${TRAVIS_REPO_SLUG}" != "open62541/open62541" ] ||
@@ -18,7 +17,7 @@ if ! [ -z ${SONAR+x} ]; then
 	    -DUA_BUILD_EXAMPLES=ON \
         -DUA_ENABLE_DISCOVERY=ON \
         -DUA_ENABLE_DISCOVERY_MULTICAST=ON \
-        -DUA_ENABLE_ENCRYPTION .. \
+        -DUA_ENABLE_ENCRYPTION=ON .. \
     && make -j
 	cd ..
 	sonar-scanner
@@ -27,8 +26,8 @@ fi
 
 # Docker build test
 if ! [ -z ${DOCKER+x} ]; then
-    docker build -t open62541 .
-    docker run -d -p 127.0.0.1:80:80 --name open62541 open62541 /bin/sh
+    docker build -t open62541 -f docker/Dockerfile .
+    docker run -d -p 127.0.0.1:4840:4840 --name open62541 open62541 /bin/sh
     docker ps | grep -q open62541
     # disabled since it randomly fails
     # docker ps | grep -q open62541
@@ -409,6 +408,16 @@ if [ $? -ne 0 ] ; then exit 1 ; fi
 cd .. && rm build -rf
 echo -en 'travis_fold:end:script.build.json\\r'
 
+    echo -e "\r\n== Compile PubSub MQTT ==" && echo -en 'travis_fold:start:script.build.mqtt\\r'
+    mkdir -p build && cd build
+    cmake \
+        -DPYTHON_EXECUTABLE:FILEPATH=/usr/bin/$PYTHON \
+        -DUA_ENABLE_PUBSUB=ON -DUA_ENABLE_PUBSUB_MQTT=ON ..
+    make -j
+    if [ $? -ne 0 ] ; then exit 1 ; fi
+    cd .. && rm build -rf
+    echo -en 'travis_fold:end:script.build.mqtt\\r'
+
 echo -e "\r\n== Unit tests (full NS0) ==" && echo -en 'travis_fold:start:script.build.unit_test_ns0_full\\r'
 mkdir -p build && cd build
 # Valgrind cannot handle the full NS0 because the generated file is too big. Thus run NS0 full without valgrind
@@ -426,34 +435,16 @@ cmake \
     -DUA_ENABLE_PUBSUB=ON \
     -DUA_ENABLE_PUBSUB_DELTAFRAMES=ON \
     -DUA_ENABLE_PUBSUB_INFORMATIONMODEL=ON \
+    -DUA_ENABLE_PUBSUB_MQTT=ON \
     -DUA_ENABLE_SUBSCRIPTIONS=ON \
     -DUA_ENABLE_SUBSCRIPTIONS_EVENTS=ON \
+    -DUA_ENABLE_SUBSCRIPTIONS_ALARMS_CONDITIONS=ON \
     -DUA_ENABLE_UNIT_TESTS_MEMCHECK=OFF \
     -DUA_NAMESPACE_ZERO=FULL ..
 make -j && make test ARGS="-V"
 if [ $? -ne 0 ] ; then exit 1 ; fi
 cd .. && rm build -rf
 echo -en 'travis_fold:end:script.build.unit_test_ns0_full\\r'
-
-if ! [ -z ${DEBIAN+x} ]; then
-    echo -e "\r\n== Building the Debian package =="  && echo -en 'travis_fold:start:script.build.debian\\r'
-    /usr/bin/$PYTHON ./tools/prepare_packaging.py
-    echo -e "\r\n --- New debian changelog content ---"
-    echo "--------------------------------------"
-    cat ./debian/changelog
-    echo "--------------------------------------"
-    # Create a backup copy. We need the clean debian directory for later packaging
-    cp -r debian debian_bak
-    dpkg-buildpackage -b
-    if [ $? -ne 0 ] ; then exit 1 ; fi
-    rm -rf debian
-    mv debian_bak debian
-    cp ../libopen62541*.deb .
-    # Copy for github release script
-    cp ../libopen62541*.deb ../..
-    echo -en 'travis_fold:end:script.build.debian\\r'
-fi
-
 
 if [ "$CC" != "tcc" ]; then
     echo -e "\r\n== Unit tests (minimal NS0) ==" && echo -en 'travis_fold:start:script.build.unit_test_ns0_minimal\\r'
@@ -474,10 +465,34 @@ if [ "$CC" != "tcc" ]; then
         -DUA_ENABLE_PUBSUB_INFORMATIONMODEL=OFF \
         -DUA_ENABLE_UNIT_TESTS_MEMCHECK=ON \
         -DUA_NAMESPACE_ZERO=MINIMAL ..
+
     make -j && make test ARGS="-V"
     if [ $? -ne 0 ] ; then exit 1 ; fi
     cd .. && rm build -rf
     echo -en 'travis_fold:end:script.build.unit_test_ns0_minimal\\r'
+
+    echo -e "\r\n== Unit tests (reduced NS0 with openssl) ==" && echo -en 'travis_fold:start:script.build.unit_test_ns0_reduced_openssl\\r'
+    mkdir -p build && cd build
+    cmake \
+        -DCMAKE_BUILD_TYPE=Debug \
+        -DPYTHON_EXECUTABLE:FILEPATH=/usr/bin/$PYTHON \
+        -DUA_BUILD_EXAMPLES=ON \
+        -DUA_BUILD_UNIT_TESTS=ON \
+        -DUA_ENABLE_COVERAGE=ON \
+        -DUA_ENABLE_DA=ON \
+        -DUA_ENABLE_DISCOVERY=ON \
+        -DUA_ENABLE_DISCOVERY_MULTICAST=ON \
+        -DUA_ENABLE_ENCRYPTION_OPENSSL=ON \
+        -DUA_ENABLE_JSON_ENCODING=ON \
+        -DUA_ENABLE_PUBSUB=ON \
+        -DUA_ENABLE_PUBSUB_DELTAFRAMES=ON \
+        -DUA_ENABLE_PUBSUB_INFORMATIONMODEL=ON \
+        -DUA_ENABLE_UNIT_TESTS_MEMCHECK=ON \
+        -DUA_NAMESPACE_ZERO=REDUCED ..
+    make -j && make test
+    if [ $? -ne 0 ] ; then exit 1 ; fi
+    cd .. && rm build -rf    
+    echo -en 'travis_fold:end:script.build.unit_test_ns0_reduced_openssl\\r'
 
     echo -e "\r\n== Unit tests (reduced NS0) ==" && echo -en 'travis_fold:start:script.build.unit_test_ns0_reduced\\r'
     mkdir -p build && cd build
@@ -518,12 +533,25 @@ if [ "$CC" != "tcc" ]; then
         echo -en 'travis_fold:end:script.build.coveralls\\r'
 
 		if [ "${TRAVIS_PULL_REQUEST}" = "false" ]; then
-			if [ "${TRAVIS_BRANCH}" = "master" ] || [ "${TRAVIS_BRANCH}" = "1.0" ]; then
+			REAL_BRANCH="${TRAVIS_BRANCH}"
+       		echo -en "== Checking branch for packing: BRANCH_FOR_TAG='$BRANCH_FOR_TAG' and TRAVIS_TAG='${TRAVIS_TAG}'. \n"
+			if [ "${TRAVIS_TAG}" = "${TRAVIS_BRANCH}" ]; then
+				REAL_BRANCH="$BRANCH_FOR_TAG"
+        		echo -en "== Commit is tag build for '${TRAVIS_TAG}'. Detected branch for tag = '$BRANCH_FOR_TAG' \n"
+			fi
+
+			if [ "${REAL_BRANCH}" = "master" ] || [ "${REAL_BRANCH}" = "1.0" ] || [ "${REAL_BRANCH}" = "1.1" ]; then
 				# Create a separate branch with the `pack/` prefix. This branch has the correct debian/changelog set, and
 				# The submodules are directly copied
-				echo -e "\r\n== Pushing 'pack/${TRAVIS_BRANCH}' branch =="  && echo -en 'travis_fold:start:script.build.pack-branch\\r'
+				echo -e "\r\n== Pushing 'pack/${REAL_BRANCH}' branch =="  && echo -en 'travis_fold:start:script.build.pack-branch\\r'
 
-				git checkout -b pack-tmp/${TRAVIS_BRANCH}
+                /usr/bin/$PYTHON ./tools/prepare_packaging.py
+                echo -e "--- New debian changelog content ---"
+                echo "--------------------------------------"
+                cat ./debian/changelog
+                echo "--------------------------------------"
+
+				git checkout -b pack-tmp/${REAL_BRANCH}
 				cp -r deps/mdnsd deps/mdnsd_back
 				cp -r deps/ua-nodeset deps/ua-nodeset_back
 				git rm -rf --cached deps/mdnsd
@@ -538,10 +566,14 @@ if [ "$CC" != "tcc" ]; then
 				git add CMakeLists.txt
 				git commit -m "[ci skip] Pack with inline submodules"
 				git remote add origin-auth https://$GITAUTH@github.com/${TRAVIS_REPO_SLUG}
-				git push -uf origin-auth pack-tmp/${TRAVIS_BRANCH}:pack/${TRAVIS_BRANCH}
+				git push -uf origin-auth pack-tmp/${REAL_BRANCH}:pack/${REAL_BRANCH}
 
 				echo -en 'travis_fold:end:script.build.pack-branch\\r'
+			else
+				echo -en "== Skipping push to pack/ because branch does not match: REAL_BRANCH='${REAL_BRANCH}' \n"
 			fi
+        else
+        	echo -en "== Skipping push to pack/ because TRAVIS_PULL_REQUEST=false \n"
         fi
 
 

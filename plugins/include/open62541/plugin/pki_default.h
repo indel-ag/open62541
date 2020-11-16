@@ -18,6 +18,9 @@ UA_CertificateVerification_AcceptAll(UA_CertificateVerification *cv);
 
 #ifdef UA_ENABLE_ENCRYPTION
 
+const unsigned char *
+UA_Bstrstr(const unsigned char *s1, size_t l1, const unsigned char *s2, size_t l2);
+
 /* Accept certificates based on a trust-list and a revocation-list. Based on
  * mbedTLS. */
 UA_EXPORT UA_StatusCode
@@ -29,7 +32,7 @@ UA_CertificateVerification_Trustlist(UA_CertificateVerification *cv,
                                      const UA_ByteString *certificateRevocationList,
                                      size_t certificateRevocationListSize);
 
-#if __linux__ /* Linux only so far */
+#ifdef __linux__ /* Linux only so far */
 UA_EXPORT UA_StatusCode
 UA_CertificateVerification_CertFolders(UA_CertificateVerification *cv,
                                        const char *trustListFolder,

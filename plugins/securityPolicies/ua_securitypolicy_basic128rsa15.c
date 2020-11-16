@@ -2,18 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  *
- *    Copyright 2018 (c) Mark Giraud, Fraunhofer IOSB
+ *    Copyright 2018-2019 (c) Mark Giraud, Fraunhofer IOSB
  *    Copyright 2019 (c) Kalycito Infotech Private Limited
- *
+ *    Copyright 2018 (c) HMS Industrial Networks AB (Author: Jonas Green)
+ *    Copyright 2020 (c) Wind River Systems, Inc.
+ * 
  */
 
 #include <open62541/plugin/securitypolicy_default.h>
-#include <open62541/plugin/securitypolicy_mbedtls_common.h>
-
-#ifdef UA_ENABLE_ENCRYPTION
-
 #include <open62541/util.h>
 
+#ifdef UA_ENABLE_ENCRYPTION_MBEDTLS
+
+#include "securitypolicy_mbedtls_common.h"
 
 #include <mbedtls/aes.h>
 #include <mbedtls/ctr_drbg.h>
@@ -40,7 +41,6 @@
 #define UA_SECURITYPOLICY_BASIC128RSA15_MAXASYMKEYLENGTH 512
 
 typedef struct {
-    const UA_SecurityPolicy *securityPolicy;
     UA_ByteString localCertThumbprint;
 
     mbedtls_ctr_drbg_context drbgContext;
@@ -192,6 +192,12 @@ asym_decrypt_sp_basic128rsa15(const UA_SecurityPolicy *securityPolicy,
 
     data->length = outOffset;
     return UA_STATUSCODE_GOOD;
+}
+
+static size_t
+asym_getLocalEncryptionKeyLength_sp_basic128rsa15(const UA_SecurityPolicy *securityPolicy,
+                                                  const Basic128Rsa15_ChannelContext *cc) {
+    return mbedtls_pk_get_len(&cc->policyContext->localPrivateKey) * 8;
 }
 
 static size_t
@@ -578,14 +584,14 @@ channelContext_compareCertificate_sp_basic128rsa15(const Basic128Rsa15_ChannelCo
 }
 
 static void
-deleteMembers_sp_basic128rsa15(UA_SecurityPolicy *securityPolicy) {
+clear_sp_basic128rsa15(UA_SecurityPolicy *securityPolicy) {
     if(securityPolicy == NULL)
         return;
 
+    UA_ByteString_deleteMembers(&securityPolicy->localCertificate);
+
     if(securityPolicy->policyContext == NULL)
         return;
-
-    UA_ByteString_deleteMembers(&securityPolicy->localCertificate);
 
     /* delete all allocated members in the context */
     Basic128Rsa15_PolicyContext *pc = (Basic128Rsa15_PolicyContext *)
@@ -636,7 +642,7 @@ updateCertificateAndPrivateKey_sp_basic128rsa15(UA_SecurityPolicy *securityPolic
         goto error;
     }
 
-    retval = asym_makeThumbprint_sp_basic128rsa15(pc->securityPolicy,
+    retval = asym_makeThumbprint_sp_basic128rsa15(securityPolicy,
                                                   &securityPolicy->localCertificate,
                                                   &pc->localCertThumbprint);
     if(retval != UA_STATUSCODE_GOOD)
@@ -648,7 +654,7 @@ updateCertificateAndPrivateKey_sp_basic128rsa15(UA_SecurityPolicy *securityPolic
     UA_LOG_ERROR(securityPolicy->logger, UA_LOGCATEGORY_SECURITYPOLICY,
                  "Could not update certificate and private key");
     if(securityPolicy->policyContext != NULL)
-        deleteMembers_sp_basic128rsa15(securityPolicy);
+        clear_sp_basic128rsa15(securityPolicy);
     return retval;
 }
 
@@ -658,6 +664,12 @@ policyContext_newContext_sp_basic128rsa15(UA_SecurityPolicy *securityPolicy,
     UA_StatusCode retval = UA_STATUSCODE_GOOD;
     if(securityPolicy == NULL)
         return UA_STATUSCODE_BADINTERNALERROR;
+
+    if (localPrivateKey.length == 0) {
+        UA_LOG_ERROR(securityPolicy->logger, UA_LOGCATEGORY_SECURITYPOLICY,
+                     "Can not initialize security policy. Private key is empty.");
+        return UA_STATUSCODE_BADINVALIDARGUMENT;
+    }
 
     Basic128Rsa15_PolicyContext *pc = (Basic128Rsa15_PolicyContext *)
         UA_malloc(sizeof(Basic128Rsa15_PolicyContext));
@@ -673,7 +685,6 @@ policyContext_newContext_sp_basic128rsa15(UA_SecurityPolicy *securityPolicy,
     mbedtls_entropy_init(&pc->entropyContext);
     mbedtls_pk_init(&pc->localPrivateKey);
     mbedtls_md_init(&pc->sha1MdContext);
-    pc->securityPolicy = securityPolicy;
 
     /* Initialized the message digest */
     const mbedtls_md_info_t *const mdInfo = mbedtls_md_info_from_type(MBEDTLS_MD_SHA1);
@@ -685,7 +696,7 @@ policyContext_newContext_sp_basic128rsa15(UA_SecurityPolicy *securityPolicy,
 
     /* Add the system entropy source */
     mbedErr = mbedtls_entropy_add_source(&pc->entropyContext,
-                                         mbedtls_platform_entropy_poll, NULL, 0,
+                                         MBEDTLS_ENTROPY_POLL_METHOD, NULL, 0,
                                          MBEDTLS_ENTROPY_SOURCE_STRONG);
     if(mbedErr) {
         retval = UA_STATUSCODE_BADSECURITYCHECKSFAILED;
@@ -715,7 +726,7 @@ policyContext_newContext_sp_basic128rsa15(UA_SecurityPolicy *securityPolicy,
     retval = UA_ByteString_allocBuffer(&pc->localCertThumbprint, UA_SHA1_LENGTH);
     if(retval != UA_STATUSCODE_GOOD)
         goto error;
-    retval = asym_makeThumbprint_sp_basic128rsa15(pc->securityPolicy,
+    retval = asym_makeThumbprint_sp_basic128rsa15(securityPolicy,
                                                   &securityPolicy->localCertificate,
                                                   &pc->localCertThumbprint);
     if(retval != UA_STATUSCODE_GOOD)
@@ -725,21 +736,19 @@ policyContext_newContext_sp_basic128rsa15(UA_SecurityPolicy *securityPolicy,
 
 error:
     UA_LOG_ERROR(securityPolicy->logger, UA_LOGCATEGORY_SECURITYPOLICY,
-                 "Could not create securityContext");
+                 "Could not create securityContext: %s", UA_StatusCode_name(retval));
     if(securityPolicy->policyContext != NULL)
-        deleteMembers_sp_basic128rsa15(securityPolicy);
+        clear_sp_basic128rsa15(securityPolicy);
     return retval;
 }
 
 UA_StatusCode
-UA_SecurityPolicy_Basic128Rsa15(UA_SecurityPolicy *policy,
-                                UA_CertificateVerification *certificateVerification,
-                                const UA_ByteString localCertificate,
+UA_SecurityPolicy_Basic128Rsa15(UA_SecurityPolicy *policy, const UA_ByteString localCertificate,
                                 const UA_ByteString localPrivateKey, const UA_Logger *logger) {
     memset(policy, 0, sizeof(UA_SecurityPolicy));
     policy->logger = logger;
 
-    policy->policyUri = UA_STRING("http://opcfoundation.org/UA/SecurityPolicy#Basic128Rsa15");
+    policy->policyUri = UA_STRING("http://opcfoundation.org/UA/SecurityPolicy#Basic128Rsa15\0");
 
     UA_SecurityPolicyAsymmetricModule *const asymmetricModule = &policy->asymmetricModule;
     UA_SecurityPolicySymmetricModule *const symmetricModule = &policy->symmetricModule;
@@ -753,7 +762,6 @@ UA_SecurityPolicy_Basic128Rsa15(UA_SecurityPolicy *policy,
     memcpy(policy->localCertificate.data, localCertificate.data, localCertificate.length);
     policy->localCertificate.data[localCertificate.length] = '\0';
     policy->localCertificate.length--;
-    policy->certificateVerification = certificateVerification;
 
     /* AsymmetricModule */
     UA_SecurityPolicySignatureAlgorithm *asym_signatureAlgorithm =
@@ -781,7 +789,8 @@ UA_SecurityPolicy_Basic128Rsa15(UA_SecurityPolicy *policy,
     asym_encryptionAlgorithm->decrypt =
         (UA_StatusCode(*)(const UA_SecurityPolicy *, void *, UA_ByteString *))
             asym_decrypt_sp_basic128rsa15;
-    asym_encryptionAlgorithm->getLocalKeyLength = NULL; // TODO: Write function
+    asym_encryptionAlgorithm->getLocalKeyLength =
+        (size_t (*)(const UA_SecurityPolicy *, const void *))asym_getLocalEncryptionKeyLength_sp_basic128rsa15;
     asym_encryptionAlgorithm->getRemoteKeyLength =
         (size_t (*)(const UA_SecurityPolicy *, const void *))asym_getRemoteEncryptionKeyLength_sp_basic128rsa15;
     asym_encryptionAlgorithm->getLocalBlockSize = NULL; // TODO: Write function
@@ -863,9 +872,13 @@ UA_SecurityPolicy_Basic128Rsa15(UA_SecurityPolicy *policy,
         channelContext_compareCertificate_sp_basic128rsa15;
 
     policy->updateCertificateAndPrivateKey = updateCertificateAndPrivateKey_sp_basic128rsa15;
-    policy->deleteMembers = deleteMembers_sp_basic128rsa15;
+    policy->clear = clear_sp_basic128rsa15;
 
-    return policyContext_newContext_sp_basic128rsa15(policy, localPrivateKey);
+    UA_StatusCode res = policyContext_newContext_sp_basic128rsa15(policy, localPrivateKey);
+    if(res != UA_STATUSCODE_GOOD)
+        clear_sp_basic128rsa15(policy);
+
+    return res;
 }
 
 #endif

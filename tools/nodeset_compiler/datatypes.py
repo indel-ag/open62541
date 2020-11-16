@@ -20,7 +20,7 @@ from base64 import *
 __all__ = ['valueIsInternalType', 'Value', 'Boolean', 'Number', 'Integer',
            'UInteger', 'Byte', 'SByte',
            'Int16', 'UInt16', 'Int32', 'UInt32', 'Int64', 'UInt64', 'Float', 'Double',
-           'String', 'XmlElement', 'ByteString', 'ExtensionObject', 'LocalizedText',
+           'String', 'XmlElement', 'ByteString', 'Structure', 'ExtensionObject', 'LocalizedText',
            'NodeId', 'ExpandedNodeId', 'DateTime', 'QualifiedName', 'StatusCode',
            'DiagnosticInfo', 'Guid']
 
@@ -186,7 +186,7 @@ class Value(object):
                 if alias is not None:
                     if xmlvalue is not None and not xmlvalue.localName == alias and not xmlvalue.localName == enc[0]:
                         logger.error(str(parent.id) + ": Expected XML element with tag " + alias + " but found " + xmlvalue.localName + " instead")
-                        return None
+                        return ExtensionObject()
                     else:
                         t = self.getTypeByString(enc[0], enc)
                         t.alias = alias
@@ -228,29 +228,43 @@ class Value(object):
             # otherwise drop the alias
             return self.__parseXMLSingleValue(xmlvalue, parentDataTypeNode, parent,
                                               alias=alias, encodingPart=enc[1], valueRank=enc[2] if len(enc)>2 else None)
+        elif not xmlvalue.localName == "ExtensionObject":
+            structure = Structure()
+            structure.alias = alias
+            structure.value = []
+            for e in enc:
+                # get field name
+                if len(e) == 3 and isinstance(e[0], string_types):
+                    field = e[0]
+                    childValue = xmlvalue.getElementsByTagName(field)
+                    if childValue is not None and len(childValue) >= 1:
+                        structure.value.append(structure.__parseXMLSingleValue(childValue[0], parentDataTypeNode, parent,
+                                                                               alias=None, encodingPart=e))
+                    else:
+                        prefix = alias + "." if alias is not None else ""
+                        logger.error(str(parent.id) + ": Expected Field '" + prefix + field + "' not found in ExtensionObject value")
+                else:
+                    logger.error(str(parent.id) + ": Expected Encoding to contain field name. Cannot construct struct")
+
+            return structure
         else:
             # [ [...], [...], [...]] multifield of unknowns (analyse separately)
             # create an extension object to hold multipart type
 
-            # FIXME: This implementation expects an extensionobject to be manditory for
-            #        multipart variables. Variants/Structures are not included in the
-            #        OPCUA Namespace 0 nodeset.
-            #        Consider moving this ExtensionObject specific parsing into the
-            #        builtin type and only determining the multipart type at this stage.
+            extobj = ExtensionObject()
             if not xmlvalue.localName == "ExtensionObject":
                 logger.error(str(parent.id) + ": Expected XML tag <ExtensionObject> for multipart type, but found " + xmlvalue.localName + " instead.")
-                return None
+                return extobj
 
-            extobj = ExtensionObject()
             extobj.encodingRule = enc
             etype = xmlvalue.getElementsByTagName("TypeId")
             if len(etype) == 0:
                 logger.error(str(parent.id) + ": Did not find <TypeId> for ExtensionObject")
-                return None
+                return extobj
             etype = etype[0].getElementsByTagName("Identifier")
             if len(etype) == 0:
                 logger.error(str(parent.id) + ": Did not find <Identifier> for ExtensionObject")
-                return None
+                return extobj
 
             etype = NodeId(etype[0].firstChild.data.strip(' \t\n\r'))
             extobj.typeId = etype
@@ -258,35 +272,42 @@ class Value(object):
             ebody = xmlvalue.getElementsByTagName("Body")
             if len(ebody) == 0:
                 logger.error(str(parent.id) + ": Did not find <Body> for ExtensionObject")
-                return None
+                return extobj
             ebody = ebody[0]
 
-            # Body must contain an Object of type 'DataType' as defined in Variable
-            ebodypart = ebody.firstChild
-            if not ebodypart.nodeType == ebodypart.ELEMENT_NODE:
-                ebodypart = getNextElementNode(ebodypart)
-            if ebodypart is None:
-                logger.error(str(parent.id) + ": Expected ExtensionObject to hold a variable of type " + str(parentDataTypeNode.browseName) + " but found nothing.")
-                return None
+            try:
+                # Body must contain an Object of type 'DataType' as defined in Variable
+                ebodypart = ebody.firstChild
+                if not ebodypart.nodeType == ebodypart.ELEMENT_NODE:
+                    ebodypart = getNextElementNode(ebodypart)
+                if ebodypart is None:
+                    logger.error(str(parent.id) + ": Expected ExtensionObject to hold a variable of type " + str(parentDataTypeNode.browseName) + " but found nothing.")
+                    return extobj
 
-            if not ebodypart.localName == "OptionSet" and not ebodypart.localName == parentDataTypeNode.browseName.name:
-                logger.error(str(parent.id) + ": Expected ExtensionObject to hold a variable of type " + str(parentDataTypeNode.browseName) + " but found " +
-                             str(ebodypart.localName) + " instead.")
-                return None
-            extobj.alias = ebodypart.localName
+                parentName = parentDataTypeNode.browseName.name
+                if parentDataTypeNode.symbolicName is not None and parentDataTypeNode.symbolicName.value is not None:
+                    parentName = parentDataTypeNode.symbolicName.value
+                if not ebodypart.localName == "OptionSet" and not ebodypart.localName == parentName:
+                    logger.error(str(parent.id) + ": Expected ExtensionObject to hold a variable of type " + str(parentDataTypeNode.browseName) + " but found " +
+                                 str(ebodypart.localName) + " instead.")
+                    return extobj
+                extobj.alias = ebodypart.localName
 
-            ebodypart = ebodypart.firstChild
-            if not ebodypart.nodeType == ebodypart.ELEMENT_NODE:
-                ebodypart = getNextElementNode(ebodypart)
-            if ebodypart is None:
-                logger.error(str(parent.id) + ": Description of dataType " + str(parentDataTypeNode.browseName) + " in ExtensionObject is empty/invalid.")
-                return None
+                ebodypart = ebodypart.firstChild
+                if not ebodypart.nodeType == ebodypart.ELEMENT_NODE:
+                    ebodypart = getNextElementNode(ebodypart)
+                if ebodypart is None:
+                    logger.error(str(parent.id) + ": Description of dataType " + str(parentDataTypeNode.browseName) + " in ExtensionObject is empty/invalid.")
+                    return extobj
 
-            extobj.value = []
-            for e in enc:
-                extobj.value.append(extobj.__parseXMLSingleValue(ebodypart, parentDataTypeNode, parent,
-                                                                 alias=None, encodingPart=e))
-                ebodypart = getNextElementNode(ebodypart)
+                extobj.value = []
+                for e in enc:
+                    extobj.value.append(extobj.__parseXMLSingleValue(ebodypart, parentDataTypeNode, parent,
+                                                                     alias=None, encodingPart=e))
+                    ebodypart = getNextElementNode(ebodypart)
+            except Exception as ex:
+                logger.error(str(parent.id) + ": Could not parse <Body> for ExtensionObject. {}".format(ex))
+
             return extobj
 
     def __str__(self):
@@ -476,6 +497,18 @@ class ExtensionObject(Value):
 
     def __str__(self):
         return "'ExtensionObject'"
+
+class Structure(Value):
+    def __init__(self, xmlelement=None):
+        Value.__init__(self)
+        if xmlelement:
+            self.parseXML(xmlelement)
+
+    def parseXML(self, xmlelement):
+        pass
+
+    def __str__(self):
+        return "'Structure'"
 
 class LocalizedText(Value):
     def __init__(self, xmlvalue=None):

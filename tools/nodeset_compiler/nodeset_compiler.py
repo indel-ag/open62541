@@ -12,6 +12,7 @@
 
 import logging
 import argparse
+import sys
 from datatypes import NodeId
 from nodeset import *
 
@@ -79,6 +80,9 @@ parser.add_argument('--backend',
 args = parser.parse_args()
 
 # Set up logging
+# By default logging outputs to stderr. We want to redirect it to stdout, otherwise build output from cmake
+# is in stdout and nodeset compiler in stderr
+logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 verbosity = 0
@@ -95,6 +99,8 @@ elif (verbosity >= 4):
 else:
     logging.basicConfig(level=logging.CRITICAL)
 
+# Set up logging
+logger = logging.getLogger(__name__)
 # Create a new nodeset. The nodeset name is not significant.
 # Parse the XML files
 ns = NodeSet()
@@ -130,19 +136,6 @@ for xmlfile in args.infiles:
 # for key in namespaceArrayNames:
 #   ns.addNamespace(key, namespaceArrayNames[key])
 
-# Remove blacklisted nodes from the nodeset
-# Doing this now ensures that unlinkable pointers will be cleanly removed
-# during sanitation.
-for blacklist in args.blacklistFiles:
-    for line in blacklist.readlines():
-        line = line.replace(" ", "")
-        id = line.replace("\n", "")
-        if ns.getNodeByIDString(id) is None:
-            logger.info("Can't blacklist node, namespace does currently not contain a node with id " + str(id))
-        else:
-            ns.removeNodeById(line)
-    blacklist.close()
-
 # Set the nodes from the ignore list to hidden. This removes them from dependency calculation
 # and from printing their generated code.
 # These nodes should be already pre-created on the server to avoid any errors during
@@ -165,6 +158,26 @@ ns.sanitize()
 ns.allocateVariables()
 
 ns.addInverseReferences()
+
+
+# Remove blacklisted nodes from the nodeset.
+# We need to have the inverse references here to ensure the reference is deleted from the referencing node too
+if args.blacklistFiles:
+    for blacklist in args.blacklistFiles:
+        for line in blacklist.readlines():
+            if line.startswith("#"):
+                continue
+            line = line.replace(" ", "")
+            id = line.replace("\n", "")
+            if len(id) == 0:
+                continue
+            n = ns.getNodeByIDString(id)
+            if n is None:
+                logger.debug("Can't blacklist node, namespace does currently not contain a node with id " + str(id))
+            else:
+                ns.remove_node(n)
+        blacklist.close()
+    ns.sanitize()
 
 ns.setNodeParent()
 
