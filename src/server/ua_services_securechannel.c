@@ -71,7 +71,9 @@ removeSecureChannel(UA_Server *server, channel_entry *entry,
     entry->cleanupCallback.callback = (UA_ApplicationCallback)removeSecureChannelCallback;
     entry->cleanupCallback.application = NULL;
     entry->cleanupCallback.data = entry;
-    UA_WorkQueue_enqueueDelayed(&server->workQueue, &entry->cleanupCallback);
+    entry->cleanupCallback.nextTime = UA_DateTime_nowMonotonic() + 1;
+    entry->cleanupCallback.interval = 0; /* Remove the structure */
+    UA_Timer_addTimerEntry(&server->timer, &entry->cleanupCallback, NULL);
 }
 
 void
@@ -156,20 +158,15 @@ UA_Server_createSecureChannel(UA_Server *server, UA_Connection *connection) {
        !purgeFirstChannelWithoutSession(server))
         return UA_STATUSCODE_BADOUTOFMEMORY;
 
-    UA_LOG_INFO(&server->config.logger, UA_LOGCATEGORY_SECURECHANNEL,
-                "Creating a new SecureChannel");
-
     channel_entry *entry = (channel_entry *)UA_malloc(sizeof(channel_entry));
     if(!entry)
         return UA_STATUSCODE_BADOUTOFMEMORY;
 
     /* Channel state is closed (0) */
     /* TODO: Use the connection config from the correct network layer */
-    UA_SecureChannel_init(&entry->channel,
-                          &server->config.networkLayers[0].localConnectionConfig);
-    entry->channel.securityToken.channelId = 0;
-    entry->channel.securityToken.createdAt = UA_DateTime_nowMonotonic();
-    entry->channel.securityToken.revisedLifetime = server->config.maxSecurityTokenLifetime;
+    UA_SecureChannel_init(&entry->channel, &server->config.networkLayers[0].localConnectionConfig);
+    entry->channel.certificateVerification = &server->config.certificateVerification;
+    entry->channel.processOPNHeader = UA_Server_configSecureChannel;
 
     TAILQ_INSERT_TAIL(&server->channels, entry, pointers);
     UA_Connection_attachSecureChannel(connection, &entry->channel);
@@ -179,10 +176,11 @@ UA_Server_createSecureChannel(UA_Server *server, UA_Connection *connection) {
 }
 
 UA_StatusCode
-UA_Server_configSecureChannel(UA_Server *server, UA_SecureChannel *channel,
+UA_Server_configSecureChannel(void *application, UA_SecureChannel *channel,
                               const UA_AsymmetricAlgorithmSecurityHeader *asymHeader) {
     /* Iterate over available endpoints and choose the correct one */
     UA_SecurityPolicy *securityPolicy = NULL;
+    UA_Server *const server = (UA_Server *const) application;
     for(size_t i = 0; i < server->config.securityPoliciesSize; ++i) {
         UA_SecurityPolicy *policy = &server->config.securityPolicies[i];
         if(!UA_ByteString_equal(&asymHeader->securityPolicyUri, &policy->policyUri))
@@ -219,7 +217,7 @@ static UA_StatusCode
 UA_SecureChannelManager_open(UA_Server *server, UA_SecureChannel *channel,
                              const UA_OpenSecureChannelRequest *request,
                              UA_OpenSecureChannelResponse *response) {
-    if(channel->state != UA_SECURECHANNELSTATE_CLOSED) {
+    if(channel->state != UA_SECURECHANNELSTATE_ACK_SENT) {
         UA_LOG_ERROR_CHANNEL(&server->config.logger, channel,
                              "Called open on already open or closed channel");
         return UA_STATUSCODE_BADINTERNALERROR;
@@ -339,8 +337,9 @@ Service_OpenSecureChannel(UA_Server *server, UA_SecureChannel *channel,
 
         /* Logging */
         if(response->responseHeader.serviceResult == UA_STATUSCODE_GOOD) {
-            UA_LOG_DEBUG_CHANNEL(&server->config.logger, channel,
-                                 "SecureChannel renewed");
+            UA_Float lifetime = (UA_Float)response->securityToken.revisedLifetime / 1000;
+            UA_LOG_INFO_CHANNEL(&server->config.logger, channel, "SecureChannel renewed "
+                                "with a revised lifetime of %.2fs", lifetime);
         } else {
             UA_LOG_DEBUG_CHANNEL(&server->config.logger, channel,
                                  "Renewing SecureChannel failed");
@@ -360,8 +359,12 @@ Service_OpenSecureChannel(UA_Server *server, UA_SecureChannel *channel,
 
     /* Logging */
     if(response->responseHeader.serviceResult == UA_STATUSCODE_GOOD) {
+        UA_Float lifetime = (UA_Float)response->securityToken.revisedLifetime / 1000;
         UA_LOG_INFO_CHANNEL(&server->config.logger, channel,
-                            "Opened SecureChannel");
+                            "SecureChannel opened with SecurityPolicy %.*s "
+                            "and a revised lifetime of %.2fs",
+                            (int)channel->securityPolicy->policyUri.length,
+                            channel->securityPolicy->policyUri.data, lifetime);
     } else {
         UA_LOG_INFO_CHANNEL(&server->config.logger, channel,
                             "Opening a SecureChannel failed");

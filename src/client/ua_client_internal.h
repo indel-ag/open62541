@@ -160,9 +160,8 @@ struct UA_Client {
 void notifyClientState(UA_Client *client);
 void processERRResponse(UA_Client *client, const UA_ByteString *chunk);
 void processACKResponse(UA_Client *client, const UA_ByteString *chunk);
-void processOPNResponse(UA_Client *client, UA_ByteString *chunk);
+void processOPNResponse(UA_Client *client, const UA_ByteString *message);
 void closeSecureChannel(UA_Client *client);
-void renewSecureChannel(UA_Client *client);
 
 UA_StatusCode
 connectIterate(UA_Client *client, UA_UInt32 timeout);

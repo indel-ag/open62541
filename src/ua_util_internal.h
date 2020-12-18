@@ -24,12 +24,55 @@ _UA_BEGIN_DECLS
 #define UA_MACRO_EXPAND(x) x
 
 /* Print a NodeId in logs */
-#define UA_LOG_NODEID_WRAP(NODEID, LOG) {   \
-    UA_String nodeIdStr = UA_STRING_NULL;   \
-    UA_NodeId_print(NODEID, &nodeIdStr);    \
-    LOG;                                    \
-    UA_String_clear(&nodeIdStr);            \
-}
+#define UA_LOG_NODEID_INTERNAL(NODEID, LOG)          \
+    do {                                             \
+    UA_String nodeIdStr = UA_STRING_NULL;            \
+    UA_NodeId_print(NODEID, &nodeIdStr);             \
+    LOG;                                             \
+    UA_String_clear(&nodeIdStr);                     \
+    } while(0);
+
+#if UA_LOGLEVEL <= 100
+# define UA_LOG_NODEID_TRACE(NODEID, LOG)       \
+    UA_LOG_NODEID_INTERNAL(NODEID, LOG)
+#else
+# define UA_LOG_NODEID_TRACE(NODEID, LOG)
+#endif
+
+#if UA_LOGLEVEL <= 200
+# define UA_LOG_NODEID_DEBUG(NODEID, LOG)       \
+    UA_LOG_NODEID_INTERNAL(NODEID, LOG)
+#else
+# define UA_LOG_NODEID_DEBUG(NODEID, LOG)
+#endif
+
+#if UA_LOGLEVEL <= 300
+# define UA_LOG_NODEID_INFO(NODEID, LOG)       \
+    UA_LOG_NODEID_INTERNAL(NODEID, LOG)
+#else
+# define UA_LOG_NODEID_INFO(NODEID, LOG)
+#endif
+
+#if UA_LOGLEVEL <= 400
+# define UA_LOG_NODEID_WARNING(NODEID, LOG)     \
+    UA_LOG_NODEID_INTERNAL(NODEID, LOG)
+#else
+# define UA_LOG_NODEID_WARNING(NODEID, LOG)
+#endif
+
+#if UA_LOGLEVEL <= 500
+# define UA_LOG_NODEID_ERROR(NODEID, LOG)       \
+    UA_LOG_NODEID_INTERNAL(NODEID, LOG)
+#else
+# define UA_LOG_NODEID_ERROR(NODEID, LOG)
+#endif
+
+#if UA_LOGLEVEL <= 600
+# define UA_LOG_NODEID_FATAL(NODEID, LOG)       \
+    UA_LOG_NODEID_INTERNAL(NODEID, LOG)
+#else
+# define UA_LOG_NODEID_FATAL(NODEID, LOG)
+#endif
 
 /* Short names for integer. These are not exposed on the public API, since many
  * user-applications make the same definitions in their headers. */
@@ -46,6 +89,10 @@ typedef UA_StatusCode status;
 /**
  * Utility Functions
  * ----------------- */
+
+const UA_DataType *
+UA_findDataTypeWithCustom(const UA_NodeId *typeId,
+                          const UA_DataTypeArray *customTypes);
 
 /* Get the number of optional fields contained in an structure type */
 size_t UA_EXPORT
@@ -151,6 +198,11 @@ typedef union {
     UA_DeleteSubscriptionsResponse deleteSubscriptionsResponse;
 #endif
 } UA_Response;
+
+/* Do not expose UA_String_equal_ignorecase to public API as it currently only handles
+ * ASCII strings, and not UTF8! */
+UA_Boolean UA_EXPORT
+UA_String_equal_ignorecase(const UA_String *s1, const UA_String *s2);
 
 _UA_END_DECLS
 

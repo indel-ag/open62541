@@ -11,10 +11,11 @@
 #ifndef UA_SECURECHANNEL_H_
 #define UA_SECURECHANNEL_H_
 
+#include <open62541/util.h>
+#include <open62541/types.h>
 #include <open62541/plugin/log.h>
 #include <open62541/plugin/securitypolicy.h>
 #include <open62541/transport_generated.h>
-#include <open62541/types.h>
 
 #include "open62541_queue.h"
 #include "ua_connection_internal.h"
@@ -48,9 +49,9 @@ typedef struct UA_Chunk {
     UA_ByteString bytes;
     UA_MessageType messageType;
     UA_ChunkType chunkType;
+    UA_UInt32 requestId;
     UA_Boolean copied; /* Do the bytes point to a buffer from the network or was
                         * memory allocated for the chunk separately */
-    UA_Boolean decrypted; /* The chunk has been decrypted */
 } UA_Chunk;
 
 typedef SIMPLEQ_HEAD(UA_ChunkQueue, UA_Chunk) UA_ChunkQueue;
@@ -119,9 +120,17 @@ struct UA_SecureChannel {
      * buffers is reentrant with the correct processing order. (This has lead to
      * problems in the client in the past.) */
     UA_ChunkQueue completeChunks; /* Received full chunks that have not been
-                                   * processed so far */
+                                   * decrypted so far */
+    UA_ChunkQueue decryptedChunks; /* Received chunks that were decrypted but
+                                    * not processed */
+    size_t decryptedChunksCount;
+    size_t decryptedChunksLength;
     UA_ByteString incompleteChunk; /* A half-received chunk (TCP is a
                                     * streaming protocol) is stored here */
+
+    UA_CertificateVerification *certificateVerification;
+    UA_StatusCode (*processOPNHeader)(void *application, UA_SecureChannel *channel,
+                                      const UA_AsymmetricAlgorithmSecurityHeader *asymHeader);
 };
 
 void UA_SecureChannel_init(UA_SecureChannel *channel,
@@ -214,7 +223,7 @@ UA_MessageContext_abort(UA_MessageContext *mc);
  * Receive Message
  * --------------- */
 
-typedef void
+typedef UA_StatusCode
 (UA_ProcessMessageCallback)(void *application, UA_SecureChannel *channel,
                             UA_MessageType messageType, UA_UInt32 requestId,
                             UA_ByteString *message);
@@ -275,7 +284,7 @@ void
 setBufPos(UA_MessageContext *mc);
 
 UA_StatusCode
-checkSymHeader(UA_SecureChannel *channel, UA_UInt32 tokenId);
+checkSymHeader(UA_SecureChannel *channel, const UA_SymmetricAlgorithmSecurityHeader *symHeader);
 
 UA_StatusCode
 processSequenceNumberAsym(UA_SecureChannel *channel, UA_UInt32 sequenceNumber);

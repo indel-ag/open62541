@@ -67,6 +67,10 @@ UA_SecureChannel_generateLocalKeys(const UA_SecureChannel *channel) {
     if(retval != UA_STATUSCODE_GOOD)
         return retval;
 
+    // No keys to generate
+    if(buf.length == 0)
+        return UA_STATUSCODE_GOOD;
+
     /* Generate key */
     retval = sm->generateKey(sp, &channel->remoteNonce, &channel->localNonce, &buf);
     if(retval != UA_STATUSCODE_GOOD) {
@@ -108,6 +112,10 @@ generateRemoteKeys(const UA_SecureChannel *channel) {
         UA_ByteString_clear(&buf);
         return retval;
     }
+
+    // No keys to generate.
+    if(buf.length == 0)
+        return UA_STATUSCODE_GOOD;
 
     /* Generate key */
     retval = sm->generateKey(sp, &channel->localNonce, &channel->remoteNonce, &buf);
@@ -556,7 +564,8 @@ checkAsymHeader(UA_SecureChannel *channel,
 }
 
 UA_StatusCode
-checkSymHeader(UA_SecureChannel *channel, UA_UInt32 tokenId) {
+checkSymHeader(UA_SecureChannel *channel,
+               const UA_SymmetricAlgorithmSecurityHeader *symHeader) {
     /* If no match, try to revolve to the next token after a
      * RenewSecureChannel */
     UA_StatusCode retval = UA_STATUSCODE_GOOD;
@@ -569,11 +578,11 @@ checkSymHeader(UA_SecureChannel *channel, UA_UInt32 tokenId) {
 
     case UA_SECURECHANNELRENEWSTATE_NEWTOKEN_SERVER:
         /* Old token still in use */
-        if(tokenId == channel->securityToken.tokenId)
+        if(symHeader->tokenId == channel->securityToken.tokenId)
             break;
 
         /* Not the new token */
-        if(tokenId != channel->altSecurityToken.tokenId) {
+        if(symHeader->tokenId != channel->altSecurityToken.tokenId) {
             UA_LOG_WARNING_CHANNEL(channel->securityPolicy->logger, channel,
                                    "Unknown SecurityToken");
             return UA_STATUSCODE_BADSECURECHANNELTOKENUNKNOWN;
@@ -589,13 +598,13 @@ checkSymHeader(UA_SecureChannel *channel, UA_UInt32 tokenId) {
 
     case UA_SECURECHANNELRENEWSTATE_NEWTOKEN_CLIENT:
         /* The server is still using the old token. That's okay. */
-        if(tokenId == channel->altSecurityToken.tokenId) {
+        if(symHeader->tokenId == channel->altSecurityToken.tokenId) {
             token = &channel->altSecurityToken;
             break;
         }
 
         /* Not the new token */
-        if(tokenId != channel->securityToken.tokenId) {
+        if(symHeader->tokenId != channel->securityToken.tokenId) {
             UA_LOG_WARNING_CHANNEL(channel->securityPolicy->logger, channel,
                                    "Unknown SecurityToken");
             return UA_STATUSCODE_BADSECURECHANNELTOKENUNKNOWN;

@@ -50,14 +50,14 @@ UA_Client_newWithConfig(const UA_ClientConfig *config) {
 }
 
 static void
-UA_ClientConfig_deleteMembers(UA_ClientConfig *config) {
-    UA_ApplicationDescription_deleteMembers(&config->clientDescription);
+UA_ClientConfig_clear(UA_ClientConfig *config) {
+    UA_ApplicationDescription_clear(&config->clientDescription);
 
-    UA_ExtensionObject_deleteMembers(&config->userIdentityToken);
-    UA_String_deleteMembers(&config->securityPolicyUri);
+    UA_ExtensionObject_clear(&config->userIdentityToken);
+    UA_String_clear(&config->securityPolicyUri);
 
-    UA_EndpointDescription_deleteMembers(&config->endpoint);
-    UA_UserTokenPolicy_deleteMembers(&config->userTokenPolicy);
+    UA_EndpointDescription_clear(&config->endpoint);
+    UA_UserTokenPolicy_clear(&config->userTokenPolicy);
 
     if(config->certificateVerification.clear)
         config->certificateVerification.clear(&config->certificateVerification);
@@ -78,7 +78,7 @@ UA_ClientConfig_deleteMembers(UA_ClientConfig *config) {
 }
 
 static void
-UA_Client_deleteMembers(UA_Client *client) {
+UA_Client_clear(UA_Client *client) {
     /* Delete the async service calls with BADHSUTDOWN */
     UA_Client_AsyncService_removeAll(client, UA_STATUSCODE_BADSHUTDOWN);
 
@@ -94,13 +94,13 @@ UA_Client_deleteMembers(UA_Client *client) {
 #endif
 
     /* Delete the timed work */
-    UA_Timer_deleteMembers(&client->timer);
+    UA_Timer_clear(&client->timer);
 }
 
 void
 UA_Client_delete(UA_Client* client) {
-    UA_Client_deleteMembers(client);
-    UA_ClientConfig_deleteMembers(&client->config);
+    UA_Client_clear(client);
+    UA_ClientConfig_clear(&client->config);
     UA_free(client);
 }
 
@@ -191,7 +191,9 @@ static UA_StatusCode
 sendSymmetricServiceRequest(UA_Client *client, const void *request,
                             const UA_DataType *requestType, UA_UInt32 *requestId) {
     /* Renew SecureChannel if necessary */
-    renewSecureChannel(client);
+    UA_Client_renewSecureChannel(client);
+    if(client->connectStatus != UA_STATUSCODE_GOOD)
+        return client->connectStatus;
 
     /* Adjusting the request header. The const attribute is violated, but we
      * only touch the following members: */
@@ -209,7 +211,7 @@ sendSymmetricServiceRequest(UA_Client *client, const void *request,
 #else
     UA_LOG_DEBUG_CHANNEL(&client->config.logger, &client->channel,
                          "Sending request with RequestId %u of type %" PRIi16,
-                         (unsigned)rqId, requestType->binaryEncodingId);
+                         (unsigned)rqId, requestType->binaryEncodingId.identifier.numeric);
 #endif
 
     /* Send the message */
@@ -250,9 +252,8 @@ processAsyncResponse(UA_Client *client, UA_UInt32 requestId, const UA_NodeId *re
     /* Verify the type of the response */
     UA_Response response;
     const UA_DataType *responseType = ac->responseType;
-    const UA_NodeId expectedNodeId = UA_NODEID_NUMERIC(0, ac->responseType->binaryEncodingId);
     UA_StatusCode retval = UA_STATUSCODE_GOOD;
-    if(!UA_NodeId_equal(responseTypeId, &expectedNodeId)) {
+    if(!UA_NodeId_equal(responseTypeId, &ac->responseType->binaryEncodingId)) {
         UA_init(&response, ac->responseType);
         if(UA_NodeId_equal(responseTypeId, &serviceFaultId)) {
             /* Decode as a ServiceFault, i.e. only the response header */
@@ -298,7 +299,7 @@ processAsyncResponse(UA_Client *client, UA_UInt32 requestId, const UA_NodeId *re
 /* Processes the received service response. Either with an async callback or by
  * decoding the message and returning it "upwards" in the
  * SyncResponseDescription. */
-static void
+static UA_StatusCode
 processServiceResponse(void *application, UA_SecureChannel *channel,
                        UA_MessageType messageType, UA_UInt32 requestId,
                        UA_ByteString *message) {
@@ -308,24 +309,21 @@ processServiceResponse(void *application, UA_SecureChannel *channel,
     switch(messageType) {
     case UA_MESSAGETYPE_ACK:
         processACKResponse(rd->client, message);
-        return;
+        return UA_STATUSCODE_GOOD;
     case UA_MESSAGETYPE_OPN:
         processOPNResponse(rd->client, message);
-        return;
+        return UA_STATUSCODE_GOOD;
     case UA_MESSAGETYPE_ERR:
         processERRResponse(rd->client, message);
-        return;
+        return UA_STATUSCODE_GOOD;
     case UA_MESSAGETYPE_MSG:
         /* Continue below */
         break;
     default:
         UA_LOG_TRACE_CHANNEL(&rd->client->config.logger, channel, "Invalid message type");
         channel->state = UA_SECURECHANNELSTATE_CLOSING;
-        return;
+        return UA_STATUSCODE_BADTCPMESSAGETYPEINVALID;
     }
-
-    /* Forward declaration for the goto */
-    UA_NodeId expectedNodeId = UA_NODEID_NULL;
 
     /* Decode the data type identifier of the response */
     size_t offset = 0;
@@ -345,8 +343,7 @@ processServiceResponse(void *application, UA_SecureChannel *channel,
     rd->received = true;
 
     /* Check that the response type matches */
-    expectedNodeId = UA_NODEID_NUMERIC(0, rd->responseType->binaryEncodingId);
-    if(!UA_NodeId_equal(&responseId, &expectedNodeId)) {
+    if(!UA_NodeId_equal(&responseId, &rd->responseType->binaryEncodingId)) {
         if(UA_NodeId_equal(&responseId, &serviceFaultId)) {
             UA_init(rd->response, rd->responseType);
             retval = UA_decodeBinary(message, &offset, rd->response,
@@ -379,7 +376,7 @@ processServiceResponse(void *application, UA_SecureChannel *channel,
                              rd->client->config.customDataTypes);
 
 finish:
-    UA_NodeId_deleteMembers(&responseId);
+    UA_NodeId_clear(&responseId);
     if(retval != UA_STATUSCODE_GOOD) {
         if(retval == UA_STATUSCODE_BADENCODINGLIMITSEXCEEDED)
             retval = UA_STATUSCODE_BADRESPONSETOOLARGE;
@@ -392,6 +389,8 @@ finish:
             respHeader->serviceResult = retval;
         }
     }
+
+    return retval;
 }
 
 /* Receive and process messages until a synchronous message arrives or the
@@ -672,7 +671,9 @@ UA_Client_run_iterate(UA_Client *client, UA_UInt32 timeout) {
     }
 
     /* Renew Secure Channel */
-    renewSecureChannel(client);
+    UA_Client_renewSecureChannel(client);
+    if(client->connectStatus != UA_STATUSCODE_GOOD)
+        return client->connectStatus;
 
     /* Feed the server PublishRequests for the Subscriptions */
 #ifdef UA_ENABLE_SUBSCRIPTIONS
@@ -704,4 +705,9 @@ UA_Client_run_iterate(UA_Client *client, UA_UInt32 timeout) {
     notifyClientState(client);
 
     return client->connectStatus;
+}
+
+const UA_DataType *
+UA_Client_findDataType(UA_Client *client, const UA_NodeId *typeId) {
+    return UA_findDataTypeWithCustom(typeId, client->config.customDataTypes);
 }

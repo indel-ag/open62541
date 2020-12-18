@@ -264,11 +264,9 @@ START_TEST(SecureChannel_sendAsymmetricOPNMessage_sentDataIsValid) {
                   requestId,
                   sequenceHeader.requestId);
 
-    UA_NodeId original =
-        UA_NODEID_NUMERIC(0, UA_TYPES[UA_TYPES_OPENSECURECHANNELRESPONSE].binaryEncodingId);
     UA_NodeId requestTypeId;
     UA_NodeId_decodeBinary(&sentData, &offset, &requestTypeId);
-    ck_assert_msg(UA_NodeId_equal(&original, &requestTypeId), "Expected nodeIds to be equal");
+    ck_assert_msg(UA_NodeId_equal(&UA_TYPES[UA_TYPES_OPENSECURECHANNELRESPONSE].binaryEncodingId, &requestTypeId), "Expected nodeIds to be equal");
 
     UA_OpenSecureChannelResponse sentResponse;
     UA_OpenSecureChannelResponse_decodeBinary(&sentData, &offset, &sentResponse);
@@ -289,9 +287,9 @@ START_TEST(SecureChannel_sendAsymmetricOPNMessage_sentDataIsValid) {
     ck_assert_msg(sentData.data[offset + paddingSize + 1] == '*', "Expected first byte of signature");
 #endif
 
-    UA_AsymmetricAlgorithmSecurityHeader_deleteMembers(&asymSecurityHeader);
-    UA_SequenceHeader_deleteMembers(&sequenceHeader);
-    UA_OpenSecureChannelResponse_deleteMembers(&sentResponse);
+    UA_AsymmetricAlgorithmSecurityHeader_clear(&asymSecurityHeader);
+    UA_SequenceHeader_clear(&sequenceHeader);
+    UA_OpenSecureChannelResponse_clear(&sentResponse);
 } END_TEST
 
 #ifdef UA_ENABLE_ENCRYPTION
@@ -340,11 +338,9 @@ START_TEST(Securechannel_sendAsymmetricOPNMessage_extraPaddingPresentWhenKeyLarg
     ck_assert_msg(sequenceHeader.requestId == requestId, "Expected requestId to be %i but was %i",
                   requestId, sequenceHeader.requestId);
 
-    UA_NodeId original =
-        UA_NODEID_NUMERIC(0, UA_TYPES[UA_TYPES_OPENSECURECHANNELRESPONSE].binaryEncodingId);
     UA_NodeId requestTypeId;
     UA_NodeId_decodeBinary(&sentData, &offset, &requestTypeId);
-    ck_assert_msg(UA_NodeId_equal(&original, &requestTypeId), "Expected nodeIds to be equal");
+    ck_assert_msg(UA_NodeId_equal(&UA_TYPES[UA_TYPES_OPENSECURECHANNELRESPONSE].binaryEncodingId, &requestTypeId), "Expected nodeIds to be equal");
 
     UA_OpenSecureChannelResponse sentResponse;
     UA_OpenSecureChannelResponse_decodeBinary(&sentData, &offset, &sentResponse);
@@ -372,9 +368,9 @@ START_TEST(Securechannel_sendAsymmetricOPNMessage_extraPaddingPresentWhenKeyLarg
                   "Expected first byte 42 of signature but got %i",
                   sentData.data[offset + paddingSize + 2]);
 
-    UA_AsymmetricAlgorithmSecurityHeader_deleteMembers(&asymSecurityHeader);
-    UA_SequenceHeader_deleteMembers(&sequenceHeader);
-    UA_OpenSecureChannelResponse_deleteMembers(&sentResponse);
+    UA_AsymmetricAlgorithmSecurityHeader_clear(&asymSecurityHeader);
+    UA_SequenceHeader_clear(&sequenceHeader);
+    UA_OpenSecureChannelResponse_clear(&sentResponse);
 }END_TEST
 
 #endif /* UA_ENABLE_ENCRYPTION */
@@ -477,6 +473,71 @@ START_TEST(SecureChannel_sendSymmetricMessage_invalidParameters) {
     ck_assert_msg(retval != UA_STATUSCODE_GOOD, "Expected failure");
 } END_TEST
 
+static UA_StatusCode
+process_callback(void *application, UA_SecureChannel *channel,
+                 UA_MessageType messageType, UA_UInt32 requestId,
+                 UA_ByteString *message) {
+    ck_assert_ptr_ne(message, NULL);
+    ck_assert_ptr_ne(application, NULL);
+    if(message == NULL || application == NULL)
+        return UA_STATUSCODE_BADINTERNALERROR;
+    ck_assert_uint_ne(message->length, 0);
+    ck_assert_ptr_ne(message->data, NULL);
+    int *chunks_processed = (int *)application;
+    ++*chunks_processed;
+    return UA_STATUSCODE_GOOD;
+}
+
+START_TEST(SecureChannel_assemblePartialChunks) {
+    int chunks_processed = 0;
+    UA_ByteString buffer = UA_BYTESTRING_NULL;
+
+    buffer.data = (UA_Byte *)"HELF \x00\x00\x00\x00\x00\x00\x00\x00\x10\x00\x00\x00"
+                             "\x10\x00\x00\x00@\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff";
+    buffer.length = 32;
+
+    UA_StatusCode retval = UA_SecureChannel_processBuffer(&testChannel, &chunks_processed, process_callback, &buffer);
+    ck_assert_msg(retval == UA_STATUSCODE_GOOD, "Expected success");
+    ck_assert_int_eq(chunks_processed, 1);
+
+    buffer.length = 16;
+
+    UA_SecureChannel_processBuffer(&testChannel, &chunks_processed, process_callback, &buffer);
+    ck_assert_msg(retval == UA_STATUSCODE_GOOD, "Expected success");
+    ck_assert_int_eq(chunks_processed, 1);
+
+    buffer.data = &buffer.data[16];
+    UA_SecureChannel_processBuffer(&testChannel, &chunks_processed, process_callback, &buffer);
+    ck_assert_msg(retval == UA_STATUSCODE_GOOD, "Expected success");
+    ck_assert_int_eq(chunks_processed, 2);
+
+    buffer.data = (UA_Byte *)"HELF \x00\x00\x00\x00\x00\x00\x00\x00\x10\x00\x00\x00"
+                             "\x10\x00\x00\x00@\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff"
+                             "HELF \x00\x00\x00\x00\x00\x00\x00\x00\x10\x00\x00\x00"
+                             "\x10\x00\x00\x00@\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff"
+                             "HELF \x00\x00\x00\x00\x00\x00\x00\x00\x10\x00\x00\x00"
+                             "\x10\x00\x00\x00@\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff";
+    buffer.length = 48;
+
+    UA_SecureChannel_processBuffer(&testChannel, &chunks_processed, process_callback, &buffer);
+    ck_assert_msg(retval == UA_STATUSCODE_GOOD, "Expected success");
+    ck_assert_int_eq(chunks_processed, 3);
+
+    buffer.data = &buffer.data[48];
+    buffer.length = 32;
+
+    UA_SecureChannel_processBuffer(&testChannel, &chunks_processed, process_callback, &buffer);
+    ck_assert_msg(retval == UA_STATUSCODE_GOOD, "Expected success");
+    ck_assert_int_eq(chunks_processed, 4);
+
+    buffer.data = &buffer.data[32];
+    buffer.length = 16;
+    UA_SecureChannel_processBuffer(&testChannel, &chunks_processed, process_callback, &buffer);
+    ck_assert_msg(retval == UA_STATUSCODE_GOOD, "Expected success");
+    ck_assert_int_eq(chunks_processed, 5);
+} END_TEST
+
+
 static Suite *
 testSuite_SecureChannel(void) {
     Suite *s = suite_create("SecureChannel");
@@ -516,6 +577,13 @@ testSuite_SecureChannel(void) {
     tcase_add_test(tc_sendSymmetricMessage, SecureChannel_sendSymmetricMessage_modeSignAndEncrypt);
 #endif
     suite_add_tcase(s, tc_sendSymmetricMessage);
+
+    TCase *tc_processBuffer = tcase_create("Test chunk assembly");
+    tcase_add_checked_fixture(tc_processBuffer, setup_funcs_called, teardown_funcs_called);
+    tcase_add_checked_fixture(tc_processBuffer, setup_key_sizes, teardown_key_sizes);
+    tcase_add_checked_fixture(tc_processBuffer, setup_secureChannel, teardown_secureChannel);
+    tcase_add_test(tc_processBuffer, SecureChannel_assemblePartialChunks);
+    suite_add_tcase(s, tc_processBuffer);
 
     return s;
 }
