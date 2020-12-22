@@ -66,5 +66,15 @@
 #define UA_LOCK_ASSERT(mutexName, num)
 #endif
 
+#define UA_strncasecmp strncasecmp
+
+#ifndef IN6_IS_ADDR_UNSPECIFIED
+# define IN6_IS_ADDR_UNSPECIFIED(a) \
+        (((const uint32_t *) (a))[0] == 0                                      \
+         && ((const uint32_t *) (a))[1] == 0                                      \
+         && ((const uint32_t *) (a))[2] == 0                                      \
+         && ((const uint32_t *) (a))[3] == 0)
+#endif
+
 
 #endif /* UA_ARCHITECTURE_INOS */
