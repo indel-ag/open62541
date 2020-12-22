@@ -38,7 +38,8 @@ void sleep_ms_inos(int aiMs);
 
 int getnameinfo_inos(const struct sockaddr_storage* addr,
 		char* host, socklen_t hostlen);
-
+int getaddrinfo_inos(const char *nodename, const char *servname,
+                 const struct addrinfo *hints, struct addrinfo **res);
 
 //------------------------------------------------------------------------------
 //

@@ -72,9 +72,9 @@
 #define UA_getsockopt lwip_getsockopt
 #define UA_setsockopt lwip_setsockopt
 #define UA_freeaddrinfo lwip_freeaddrinfo
-#define UA_gethostname gethostname_lwip
+//#define UA_gethostname lwip_gethostname   // defined in inos/ua_architecture.h
 #define UA_getsockname lwip_getsockname
-#define UA_getaddrinfo lwip_getaddrinfo
+//#define UA_getaddrinfo lwip_getaddrinfo   // defined in inos/ua_architecture.h
 
 #if UA_IPV6
 # define UA_inet_pton(af, src, dst) \
@@ -89,7 +89,6 @@
 # define UA_if_nametoindex lwip_if_nametoindex
 #endif
 
-int gethostname_lwip(char* name, size_t len); //gethostname is not present in LwIP. We implement here a dummy. See ../freertosLWIP/ua_architecture_functions.c
 
 #define UA_LOG_SOCKET_ERRNO_GAI_WRAP UA_LOG_SOCKET_ERRNO_WRAP
 

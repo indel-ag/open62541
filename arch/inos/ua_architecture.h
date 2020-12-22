@@ -19,6 +19,8 @@
 #define UA_realloc realloc
 #define UA_snprintf snprintf
 #define UA_sleep_ms(X) sleep_ms_inos(X)
+#define UA_gethostname gethostname_inos
+#define UA_getaddrinfo getaddrinfo_inos
 #define UA_LOG_SOCKET_ERRNO_WRAP(LOG) { \
     char *errno_str = ""; \
     LOG; \

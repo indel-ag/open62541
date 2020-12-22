@@ -11,6 +11,7 @@
 // system
 #include <inos.h>
 #include <cinoseventlogger.h>
+#include <sockets.h>
 // project
 #include "ua_inos_sys.h"
 
@@ -28,8 +29,14 @@ uint64_t GetSystemMicroSeconds_inos() {
 //
 int gethostname_inos(char* name, size_t len)
 {
-	strncpy(name, TARGET.GetIPAddressStr(), len);
-	return 0;
+	// return our MDNS hostname
+    int ret = snprintf(name, len, "%s.local", TARGET.GetHostname());
+    if (ret>=0 && ret<(int)len) {
+    	// success
+    	return 0;
+    }
+    // failed
+	return -1;
 }
 
 //------------------------------------------------------------------------------
@@ -88,6 +95,23 @@ int getnameinfo_inos(const struct sockaddr_storage* addr,
 	}
 }
 
+
+//------------------------------------------------------------------------------
+//
+int getaddrinfo_inos(const char *nodename, const char *servname,
+                 const struct addrinfo *hints, struct addrinfo **res)
+{
+	// is it our MDNS hostname?
+	char cMdnsHostname [64];
+	snprintf(cMdnsHostname, sizeof(cMdnsHostname), "%s.local", TARGET.GetHostname());
+	if (strncmp(nodename, cMdnsHostname, sizeof(cMdnsHostname)) == 0) {
+		// yes -> LWIP does not know it, treat it as IPv4 wildcard
+		// this is the "OPC UA server" use case
+		nodename = "0.0.0.0";
+	}
+	// pass to LWIP
+	return getaddrinfo(nodename, servname, hints, res);
+}
 
 //------------------------------------------------------------------------------
 //

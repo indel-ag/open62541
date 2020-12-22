@@ -22,11 +22,6 @@ unsigned int UA_socket_set_nonblocking(UA_SOCKET sockfd){
   return UA_STATUSCODE_GOOD;
 }
 
-int gethostname_lwip(char* name, size_t len){
-  // use UA_ServerConfig_set_customHostname to set your hostname as the IP
-  return -1;
-}
-
 void UA_initialize_architecture_network(void){
   return;
 }
