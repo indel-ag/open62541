@@ -102,12 +102,14 @@ int getaddrinfo_inos(const char *nodename, const char *servname,
                  const struct addrinfo *hints, struct addrinfo **res)
 {
 	// is it our MDNS hostname?
-	char cMdnsHostname [64];
-	snprintf(cMdnsHostname, sizeof(cMdnsHostname), "%s.local", TARGET.GetHostname());
-	if (strncmp(nodename, cMdnsHostname, sizeof(cMdnsHostname)) == 0) {
-		// yes -> LWIP does not know it, treat it as IPv4 wildcard
-		// this is the "OPC UA server" use case
-		nodename = "0.0.0.0";
+	if (nodename) {
+		char cMdnsHostname [64];
+		snprintf(cMdnsHostname, sizeof(cMdnsHostname), "%s.local", TARGET.GetHostname());
+		if (strncmp(nodename, cMdnsHostname, sizeof(cMdnsHostname)) == 0) {
+			// yes -> LWIP does not know it, treat it as IPv4 wildcard
+			// this is the "OPC UA server" use case
+			nodename = "0.0.0.0";
+		}
 	}
 	// pass to LWIP
 	return getaddrinfo(nodename, servname, hints, res);
