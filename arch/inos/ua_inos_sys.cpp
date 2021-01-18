@@ -27,6 +27,37 @@ uint64_t GetSystemMicroSeconds_inos() {
 
 //------------------------------------------------------------------------------
 //
+void inos_mutex_init(inos_mutex_t* mutex)
+{
+	mutex->pMutex = new CINOSMutex();
+}
+
+//------------------------------------------------------------------------------
+//
+void inos_mutex_destroy(inos_mutex_t* mutex)
+{
+	delete (CINOSMutex*)mutex->pMutex;
+	mutex->pMutex = nullptr;
+}
+
+//------------------------------------------------------------------------------
+//
+void inos_mutex_lock(inos_mutex_t* mutex)
+{
+	ASSERT_ALWAYS(mutex->pMutex);
+	((CINOSMutex*)mutex->pMutex)->Request();
+}
+
+//------------------------------------------------------------------------------
+//
+void inos_mutex_unlock(inos_mutex_t* mutex)
+{
+	ASSERT_ALWAYS(mutex->pMutex);
+	((CINOSMutex*)mutex->pMutex)->Release();
+}
+
+//------------------------------------------------------------------------------
+//
 int gethostname_inos(char* name, size_t len)
 {
 	// return our MDNS hostname
@@ -102,12 +133,14 @@ int getaddrinfo_inos(const char *nodename, const char *servname,
                  const struct addrinfo *hints, struct addrinfo **res)
 {
 	// is it our MDNS hostname?
-	char cMdnsHostname [64];
-	snprintf(cMdnsHostname, sizeof(cMdnsHostname), "%s.local", TARGET.GetHostname());
-	if (strncmp(nodename, cMdnsHostname, sizeof(cMdnsHostname)) == 0) {
-		// yes -> LWIP does not know it, treat it as IPv4 wildcard
-		// this is the "OPC UA server" use case
-		nodename = "0.0.0.0";
+	if (nodename) {
+		char cMdnsHostname [64];
+		snprintf(cMdnsHostname, sizeof(cMdnsHostname), "%s.local", TARGET.GetHostname());
+		if (strncmp(nodename, cMdnsHostname, sizeof(cMdnsHostname)) == 0) {
+			// yes -> LWIP does not know it, treat it as IPv4 wildcard
+			// this is the "OPC UA server" use case
+			nodename = "0.0.0.0";
+		}
 	}
 	// pass to LWIP
 	return getaddrinfo(nodename, servname, hints, res);
