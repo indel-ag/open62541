@@ -36,21 +36,21 @@
 
 
 #if UA_MULTITHREADING >= 100
-#define UA_LOCK_TYPE_NAME               inos_mutex_t
+#define UA_Lock                         inos_mutex_t
 #define UA_LOCK_TYPE(mutexName)         inos_mutex_t mutexName;
-#define UA_LOCK_INIT(mutexName)         inos_mutex_init(&mutexName);
-#define UA_LOCK_DESTROY(mutexName)      inos_mutex_destroy(&mutexName);
-#define UA_LOCK(mutexName)              inos_mutex_lock(&mutexName);
-#define UA_UNLOCK(mutexName)            inos_mutex_unlock(&mutexName);
-#define UA_LOCK_ASSERT(mutexName, num)  //UA_assert(mutexName##Counter == num);
+#define UA_LOCK_INIT(mutexPtr)          inos_mutex_init(mutexPtr);
+#define UA_LOCK_DESTROY(mutexPtr)       inos_mutex_destroy(mutexPtr);
+#define UA_LOCK(mutexPtr)               inos_mutex_lock(mutexPtr);
+#define UA_UNLOCK(mutexPtr)             inos_mutex_unlock(mutexPtr);
+#define UA_LOCK_ASSERT(mutexPtr, num)  //UA_assert(mutexName##Counter == num);
 #else
-#define UA_LOCK_TYPE_NAME
+#define UA_Lock
 #define UA_LOCK_TYPE(mutexName)
-#define UA_LOCK_INIT(mutexName)
-#define UA_LOCK_DESTROY(mutexName)
-#define UA_LOCK(mutexName)
-#define UA_UNLOCK(mutexName)
-#define UA_LOCK_ASSERT(mutexName, num)
+#define UA_LOCK_INIT(mutexPtr)
+#define UA_LOCK_DESTROY(mutexPtr)
+#define UA_LOCK(mutexPtr)
+#define UA_UNLOCK(mutexPtr)
+#define UA_LOCK_ASSERT(mutexPtr, num)
 #endif
 
 #define UA_strncasecmp strncasecmp

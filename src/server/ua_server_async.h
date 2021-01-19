@@ -58,7 +58,7 @@ typedef TAILQ_HEAD(UA_AsyncResponseQueue, UA_AsyncResponse) UA_AsyncResponseQueu
 
 typedef struct {
     /* Requests / Responses */
-	UA_LOCK_TYPE(asyncResponsesLock)
+	UA_Lock asyncResponsesLock;
 	UA_AsyncResponseQueue asyncResponses;
     size_t asyncResponsesCount;
 

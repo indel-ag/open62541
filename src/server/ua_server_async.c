@@ -215,7 +215,7 @@ UA_AsyncManager_createAsyncResponse(UA_AsyncManager *am, UA_Server *server,
         return res;
     }
 
-    UA_LOCK(am->asyncResponsesLock);
+    UA_LOCK(&am->asyncResponsesLock);
     am->asyncResponsesCount += 1;
     newentry->requestId = requestId;
     newentry->requestHandle = requestHandle;
@@ -224,7 +224,7 @@ UA_AsyncManager_createAsyncResponse(UA_AsyncManager *am, UA_Server *server,
         newentry->timeout += (UA_DateTime)
             (server->config.asyncOperationTimeout * (UA_DateTime)UA_DATETIME_MSEC);
     TAILQ_INSERT_TAIL(&am->asyncResponses, newentry, pointers);
-    UA_UNLOCK(am->asyncResponsesLock);
+    UA_UNLOCK(&am->asyncResponsesLock);
 
     *outAr = newentry;
     return UA_STATUSCODE_GOOD;
@@ -233,10 +233,10 @@ UA_AsyncManager_createAsyncResponse(UA_AsyncManager *am, UA_Server *server,
 /* Remove entry and free all allocated data */
 void
 UA_AsyncManager_removeAsyncResponse(UA_AsyncManager *am, UA_AsyncResponse *ar) {
-    UA_LOCK(am->asyncResponsesLock);
+    UA_LOCK(&am->asyncResponsesLock);
     TAILQ_REMOVE(&am->asyncResponses, ar, pointers);
     am->asyncResponsesCount -= 1;
-    UA_UNLOCK(am->asyncResponsesLock);
+    UA_UNLOCK(&am->asyncResponsesLock);
 
     UA_CallResponse_clear(&ar->response.callResponse);
     UA_NodeId_clear(&ar->sessionId);
@@ -449,9 +449,9 @@ UA_Server_processServiceOperationsAsync(UA_Server *server, UA_Session *session,
 UA_AsyncResponse*
 UA_Server_getLastAsyncResponse(UA_Server *server) {
     UA_AsyncManager *am = &server->asyncManager;
-    UA_LOCK(am->asyncResponsesLock);
+    UA_LOCK(&am->asyncResponsesLock);
     UA_AsyncResponse *ar = TAILQ_LAST(&am->asyncResponses, UA_AsyncResponseQueue);
-    UA_UNLOCK(am->asyncResponsesLock);
+    UA_UNLOCK(&am->asyncResponsesLock);
     return ar;
 }
 
