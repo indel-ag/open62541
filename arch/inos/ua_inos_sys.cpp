@@ -60,8 +60,14 @@ void inos_mutex_unlock(inos_mutex_t* mutex)
 //
 int gethostname_inos(char* name, size_t len)
 {
-	// return our MDNS hostname
-    int ret = snprintf(name, len, "%s.local", TARGET.GetHostname());
+	int ret = 0;
+	if (!INOSGetSystemBoolean("OPCUA", "NumericHostname", false)) {
+		// default case: return our MDNS hostname
+		ret = snprintf(name, len, "%s.local", TARGET.GetHostname());
+	} else {
+		// return IP
+		ret = snprintf(name, len, "%s", TARGET.GetIPAddressStr());
+	}
     if (ret>=0 && ret<(int)len) {
     	// success
     	return 0;
