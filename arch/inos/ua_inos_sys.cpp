@@ -27,10 +27,47 @@ uint64_t GetSystemMicroSeconds_inos() {
 
 //------------------------------------------------------------------------------
 //
+void inos_mutex_init(inos_mutex_t* mutex)
+{
+	mutex->pMutex = new CINOSMutex();
+}
+
+//------------------------------------------------------------------------------
+//
+void inos_mutex_destroy(inos_mutex_t* mutex)
+{
+	delete (CINOSMutex*)mutex->pMutex;
+	mutex->pMutex = nullptr;
+}
+
+//------------------------------------------------------------------------------
+//
+void inos_mutex_lock(inos_mutex_t* mutex)
+{
+	ASSERT_ALWAYS(mutex->pMutex);
+	((CINOSMutex*)mutex->pMutex)->Request();
+}
+
+//------------------------------------------------------------------------------
+//
+void inos_mutex_unlock(inos_mutex_t* mutex)
+{
+	ASSERT_ALWAYS(mutex->pMutex);
+	((CINOSMutex*)mutex->pMutex)->Release();
+}
+
+//------------------------------------------------------------------------------
+//
 int gethostname_inos(char* name, size_t len)
 {
-	// return our MDNS hostname
-    int ret = snprintf(name, len, "%s.local", TARGET.GetHostname());
+	int ret = 0;
+	if (!INOSGetSystemBoolean("OPCUA", "NumericHostname", false)) {
+		// default case: return our MDNS hostname
+		ret = snprintf(name, len, "%s.local", TARGET.GetHostname());
+	} else {
+		// return IP
+		ret = snprintf(name, len, "%s", TARGET.GetIPAddressStr());
+	}
     if (ret>=0 && ret<(int)len) {
     	// success
     	return 0;
