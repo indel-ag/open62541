@@ -576,26 +576,27 @@ UA_PubSubChannelUDPMC_receive(UA_PubSubChannel *channel,
     timeoutValue.tv_sec  = (long int)(timeout / 1000000);
     timeoutValue.tv_usec = (long int)(timeout % 1000000);
     do {
-    if(timeout > 0) {
-        UA_fd_set(channel->sockfd, &fdset);
+        if(timeout > 0) {
+            UA_fd_set(channel->sockfd, &fdset);
             /* Select API will return the remaining time in the struct
-             * timeval */
+            * timeval */
             int resultsize = UA_select(channel->sockfd+1, &fdset, NULL,
-                                       NULL, &timeoutValue);
+                                    NULL, &timeoutValue);
             if(resultsize == 0) {
                 retval = UA_STATUSCODE_GOODNONCRITICALTIMEOUT;
                 if(rcvCount > 0)
                     retval = UA_STATUSCODE_GOOD;
                 break;
-        }
+            }
 
-        if (resultsize == -1) {
+            if (resultsize == -1) {
                 UA_LOG_SOCKET_ERRNO_WRAP(
                     UA_LOG_WARNING(UA_Log_Stdout, UA_LOGCATEGORY_NETWORK,
                                    "PubSub Connection receiving failed: "
                                    "select failed. Error: %s", errno_str));
                 retval = UA_STATUSCODE_BADINTERNALERROR;
                 break;
+            }
         }
         UA_ByteString buffer;
         buffer.length = RECEIVE_MSG_BUFFER_SIZE;
@@ -612,16 +613,15 @@ UA_PubSubChannelUDPMC_receive(UA_PubSubChannel *channel,
                                    "PubSub Connection decode and process failed.");
 
             }
-        }
 
-    } else {
-            UA_LOG_SOCKET_ERRNO_WRAP(
-                UA_LOG_WARNING(UA_Log_Stdout, UA_LOGCATEGORY_NETWORK,
-                               "PubSub Connection receiving failed: "
-                               "recvfrom failed. Error: %s", errno_str));
-            retval = UA_STATUSCODE_BADINTERNALERROR;
-            break;
-    }
+        } else {
+                UA_LOG_SOCKET_ERRNO_WRAP(
+                    UA_LOG_WARNING(UA_Log_Stdout, UA_LOGCATEGORY_NETWORK,
+                                "PubSub Connection receiving failed: "
+                                "recvfrom failed. Error: %s", errno_str));
+                retval = UA_STATUSCODE_BADINTERNALERROR;
+                break;
+        }
 
         rcvCount++;
         UA_DateTime endTime = UA_DateTime_nowMonotonic();
