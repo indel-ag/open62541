@@ -10,19 +10,6 @@
 #ifndef PLUGINS_ARCH_POSIX_UA_ARCHITECTURE_H_
 #define PLUGINS_ARCH_POSIX_UA_ARCHITECTURE_H_
 
-/* Enable POSIX features */
-#if !defined(_XOPEN_SOURCE)
-# define _XOPEN_SOURCE 600
-#endif
-#ifndef _DEFAULT_SOURCE
-# define _DEFAULT_SOURCE
-#endif
-/* On older systems we need to define _BSD_SOURCE.
- * _DEFAULT_SOURCE is an alias for that. */
-#ifndef _BSD_SOURCE
-# define _BSD_SOURCE
-#endif
-
 #include <open62541/architecture_definitions.h>
 
 #include <errno.h>
@@ -33,6 +20,7 @@
 #include <sys/select.h>
 #include <sys/types.h>
 #include <net/if.h>
+#include <poll.h>
 #ifdef UA_sleep_ms
 void UA_sleep_ms(unsigned long ms);
 #else
@@ -54,9 +42,8 @@ void UA_sleep_ms(unsigned long ms);
 #  include<sys/socket.h>
 # endif
 #endif
-#if !defined(__CYGWIN__)
-# include <netinet/tcp.h>
-#endif
+
+#include <netinet/tcp.h>
 
 /* unsigned int for windows and workaround to a glibc bug */
 /* Additionally if GNU_LIBRARY is not defined, it may be using
@@ -84,13 +71,19 @@ void UA_sleep_ms(unsigned long ms);
 #define UA_WOULDBLOCK EWOULDBLOCK
 #define UA_ERR_CONNECTION_PROGRESS EINPROGRESS
 
+#define UA_POLLIN POLLIN
+#define UA_POLLOUT POLLOUT
+
 #define UA_ENABLE_LOG_COLORS
 
-#define UA_getnameinfo getnameinfo
+#define UA_poll poll
+#define UA_getnameinfo(sa, salen, host, hostlen, serv, servlen, flags) \
+    getnameinfo(sa, salen, host, hostlen, serv, servlen, flags)
 #define UA_send send
 #define UA_recv recv
 #define UA_sendto sendto
 #define UA_recvfrom recvfrom
+#define UA_recvmsg recvmsg
 #define UA_htonl htonl
 #define UA_ntohl ntohl
 #define UA_close close
@@ -104,6 +97,7 @@ void UA_sleep_ms(unsigned long ms);
 #define UA_getaddrinfo getaddrinfo
 #define UA_getsockopt getsockopt
 #define UA_setsockopt setsockopt
+#define UA_ioctl ioctl
 #define UA_freeaddrinfo freeaddrinfo
 #define UA_gethostname gethostname
 #define UA_getsockname getsockname
@@ -126,13 +120,17 @@ void UA_sleep_ms(unsigned long ms);
 #define UA_snprintf snprintf
 #define UA_strncasecmp strncasecmp
 
+#define UA_clean_errno(STR_FUN) (errno == 0 ? (char*) "None" : (STR_FUN)(errno))
+
 #define UA_LOG_SOCKET_ERRNO_WRAP(LOG) { \
-    char *errno_str = strerror(errno); \
+    char *errno_str = UA_clean_errno(strerror); \
     LOG; \
+    errno = 0; \
 }
 #define UA_LOG_SOCKET_ERRNO_GAI_WRAP(LOG) { \
-    const char *errno_str = gai_strerror(errno); \
+    const char *errno_str = UA_clean_errno(gai_strerror); \
     LOG; \
+    errno = 0; \
 }
 
 #if UA_MULTITHREADING >= 100
@@ -176,17 +174,21 @@ UA_LOCK_ASSERT(UA_Lock *lock, int num) {
     UA_assert(lock->mutexCounter == num);
 }
 #else
-#define UA_LOCK_INIT(lock)
-#define UA_LOCK_DESTROY(lock)
-#define UA_LOCK(lock)
-#define UA_UNLOCK(lock)
-#define UA_LOCK_ASSERT(lock, num)
+#define UA_EMPTY_STATEMENT                                                               \
+    do {                                                                                 \
+    } while(0)
+#define UA_LOCK_INIT(lock) UA_EMPTY_STATEMENT
+#define UA_LOCK_DESTROY(lock) UA_EMPTY_STATEMENT
+#define UA_LOCK(lock) UA_EMPTY_STATEMENT
+#define UA_UNLOCK(lock) UA_EMPTY_STATEMENT
+#define UA_LOCK_ASSERT(lock, num) UA_EMPTY_STATEMENT
 #endif
 
 #include <open62541/architecture_functions.h>
 
-#if defined(__APPLE__)  && defined(_SYS_QUEUE_H_)
-//  in some compilers there's already a _SYS_QUEUE_H_ which is included first and doesn't have all functions
+#if defined(__APPLE__) && defined(_SYS_QUEUE_H_)
+//  in some compilers there's already a _SYS_QUEUE_H_ which is included first and doesn't
+//  have all functions
 
 #undef SLIST_HEAD
 #undef SLIST_HEAD_INITIALIZER

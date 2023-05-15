@@ -84,12 +84,13 @@ readRawModified(const UA_HistoryModifiedData *data) {
     printf("readRawModified Value count: %lu\n", (long unsigned)data->dataValuesSize);
 
     /* Iterate over all values */
-    for (size_t i = 0; i < data->dataValuesSize; ++i) {
+    for(size_t i = 0; i < data->dataValuesSize; ++i) {
         printDataValue(&data->dataValues[i]);
     }
-    printf("Modificaton Value count: %lu\n", data->modificationInfosSize);
-    for (size_t j = 0; j < data->modificationInfosSize; ++j) {
-        if (data->modificationInfos[j].userName.data)
+    printf("Modificaton Value count: %llu\n",
+           (long long unsigned)data->modificationInfosSize);
+    for(size_t j = 0; j < data->modificationInfosSize; ++j) {
+        if(data->modificationInfos[j].userName.data)
             printf("Username: %s, ", data->modificationInfos[j].userName.data);
 
         printTimestamp("Modtime", data->modificationInfos[j].modificationTime);
@@ -140,8 +141,9 @@ int main(int argc, char *argv[]) {
     /* Connect to the Unified Automation demo server */
     UA_StatusCode retval = UA_Client_connect(client, "opc.tcp://localhost:53530/OPCUA/SimulationServer");
     if(retval != UA_STATUSCODE_GOOD) {
+        printf("Could not connect\n");
         UA_Client_delete(client);
-        return EXIT_FAILURE;
+        return EXIT_SUCCESS;
     }
 
     /* Read historical values (uint32) */

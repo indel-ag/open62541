@@ -12,11 +12,13 @@
 
 #include "securitypolicy_openssl_common.h"
 
-#ifdef UA_ENABLE_ENCRYPTION_OPENSSL
+#if defined(UA_ENABLE_ENCRYPTION_OPENSSL) || defined(UA_ENABLE_ENCRYPTION_LIBRESSL)
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
 #include <openssl/x509v3.h>
 #include <openssl/pem.h>
+
+#include "ua_openssl_version_abstraction.h"
 
 /* Find binary substring. Taken and adjusted from
  * http://tungchingkai.blogspot.com/2011/07/binary-strstr.html */
@@ -24,14 +26,11 @@
 static const unsigned char *
 bstrchr(const unsigned char *s, const unsigned char ch, size_t l) {
     /* find first occurrence of c in char s[] for length l*/
-    /* handle special case */
-    if(l == 0)
-        return (NULL);
-
-    for(; *s != ch; ++s, --l)
-        if(l == 0)
-            return (NULL);
-    return s;
+    for(; l > 0; ++s, --l) {
+        if(*s == ch)
+            return s;
+    }
+    return NULL;
 }
 
 static const unsigned char *
@@ -175,14 +174,8 @@ UA_skCrls_Cert2X509 (const UA_ByteString *   certificateRevocationList,
             crl = d2i_X509_CRL (NULL, &pData, (long) certificateRevocationList[i].length);
         } else {
             BIO* bio = NULL;
-
-#if OPENSSL_VERSION_NUMBER < 0x1000207fL
             bio = BIO_new_mem_buf((void *) certificateRevocationList[i].data,
                                   (int) certificateRevocationList[i].length);
-#else
-            bio = BIO_new_mem_buf((const void *) certificateRevocationList[i].data,
-                                  (int) certificateRevocationList[i].length);
-#endif
             crl = PEM_read_bio_X509_CRL(bio, NULL, NULL, NULL);
             BIO_free(bio);
         }
@@ -423,7 +416,11 @@ UA_X509_Store_CTX_Error_To_UAError (int opensslErr) {
             ret = UA_STATUSCODE_BADCERTIFICATEUNTRUSTED;
             break;
         case X509_V_ERR_CERT_SIGNATURE_FAILURE:
-            ret = UA_STATUSCODE_BADSECURITYCHECKSFAILED ;
+        case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
+            ret = UA_STATUSCODE_BADSECURITYCHECKSFAILED;
+            break;
+        case X509_V_ERR_UNABLE_TO_GET_CRL:
+            ret = UA_STATUSCODE_BADCERTIFICATEREVOCATIONUNKNOWN;
             break;
         default:
             ret = UA_STATUSCODE_BADCERTIFICATEINVALID;
@@ -459,7 +456,7 @@ UA_CertificateVerification_Verify (void *                verificationContext,
     if (ret != UA_STATUSCODE_GOOD) {
         goto cleanup;
     }
-#endif    
+#endif
 
     certificateX509 = UA_OpenSSL_LoadCertificate(certificate);
     if (certificateX509 == NULL) {
@@ -474,30 +471,101 @@ UA_CertificateVerification_Verify (void *                verificationContext,
         ret = UA_STATUSCODE_BADINTERNALERROR;
         goto cleanup;
     }
-    (void) X509_STORE_CTX_trusted_stack (storeCtx, ctx->skTrusted);
+#if defined(OPENSSL_API_COMPAT) && OPENSSL_API_COMPAT < 0x10100000L
+	(void) X509_STORE_CTX_trusted_stack (storeCtx, ctx->skTrusted);
+#else
+	(void) X509_STORE_CTX_set0_trusted_stack (storeCtx, ctx->skTrusted);
+#endif
 
     /* Set crls to ctx */
     if (sk_X509_CRL_num (ctx->skCrls) > 0) {
         X509_STORE_CTX_set0_crls (storeCtx, ctx->skCrls);
     }
 
-#if OPENSSL_VERSION_NUMBER >= 0x1010000fL
-    if (X509_STORE_CTX_get_check_issued (storeCtx) (storeCtx,certificateX509, certificateX509) != 1) {
-        X509_STORE_CTX_set_flags (storeCtx, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+    /* Set flag to check if the certificate has an invalid signature */
+    X509_STORE_CTX_set_flags (storeCtx, X509_V_FLAG_CHECK_SS_SIGNATURE);
+
+    if (X509_STORE_CTX_get_check_issued(storeCtx) (storeCtx,certificateX509, certificateX509) != 1) {
+        X509_STORE_CTX_set_flags (storeCtx, X509_V_FLAG_CRL_CHECK);
     }
-#else
-    if (storeCtx->check_issued(storeCtx,certificateX509, certificateX509) != 1) {
-        X509_STORE_CTX_set_flags (storeCtx, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+
+    /* This condition will check whether the certificate is a User certificate or a CA certificate.
+     * If the KU_KEY_CERT_SIGN and KU_CRL_SIGN of key_usage are set, then the certificate shall be
+     * condidered as CA Certificate and cannot be used to establish a connection. Refer the test case
+     * CTT/Security/Security Certificate Validation/029.js for more details */
+     /** \todo Can the ca-parameter of X509_check_purpose can be used? */
+    if(X509_check_purpose(certificateX509, X509_PURPOSE_CRL_SIGN, 0) && X509_check_ca(certificateX509)) {
+        return UA_STATUSCODE_BADCERTIFICATEUSENOTALLOWED;
     }
-#endif    
 
     opensslRet = X509_verify_cert (storeCtx);
     if (opensslRet == 1) {
         ret = UA_STATUSCODE_GOOD;
+
+        /* Check if the not trusted certificate has a CRL file. If there is no CRL file available for the corresponding
+         * parent certificate then return status code UA_STATUSCODE_BADCERTIFICATEISSUERREVOCATIONUNKNOWN. Refer the test
+         * case CTT/Security/Security Certificate Validation/002.js */
+        if (X509_STORE_CTX_get_check_issued (storeCtx) (storeCtx,certificateX509, certificateX509) != 1) {
+            /* Free X509_STORE_CTX and reuse it for certification verification */
+            if (storeCtx != NULL) {
+               X509_STORE_CTX_free(storeCtx);
+            }
+
+            /* Initialised X509_STORE_CTX sructure*/
+            storeCtx = X509_STORE_CTX_new();
+
+            /* Sets up X509_STORE_CTX structure for a subsequent verification operation */
+            X509_STORE_set_flags(store, 0);
+            X509_STORE_CTX_init (storeCtx, store, certificateX509,ctx->skIssue);
+
+            /* Set trust list to ctx */
+            (void) X509_STORE_CTX_trusted_stack (storeCtx, ctx->skTrusted);
+
+            /* Set crls to ctx */
+            X509_STORE_CTX_set0_crls (storeCtx, ctx->skCrls);
+
+            /* Set flags for CRL check */
+            X509_STORE_CTX_set_flags (storeCtx, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+
+            opensslRet = X509_verify_cert (storeCtx);
+            if (opensslRet != 1) {
+                opensslRet = X509_STORE_CTX_get_error (storeCtx);
+                if (opensslRet == X509_V_ERR_UNABLE_TO_GET_CRL) {
+                    ret = UA_STATUSCODE_BADCERTIFICATEISSUERREVOCATIONUNKNOWN;
+                }
+            }
+        }
     }
     else {
-        /* Return opc founcation CTT tool expected error  */
         opensslRet = X509_STORE_CTX_get_error (storeCtx);
+
+        /* Check the issued certificate of a CA that is not trusted but available */
+        if(opensslRet == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN){
+            int                     trusted_cert_len = sk_X509_num(ctx->skTrusted);
+            int                     cmpVal;
+            X509                    *trusted_cert;
+            const ASN1_OCTET_STRING *trusted_cert_keyid;
+            const ASN1_OCTET_STRING *remote_cert_keyid;
+
+            for (int i = 0; i < trusted_cert_len; i++) {
+                trusted_cert = sk_X509_value(ctx->skTrusted, i);
+
+                /* Fetch the Subject key identifier of the certificate in trust list */
+                trusted_cert_keyid = X509_get0_subject_key_id(trusted_cert);
+
+                /* Fetch the Subject key identifier of the remote certificate */
+                remote_cert_keyid = X509_get0_subject_key_id(certificateX509);
+
+                /* Check remote certificate is present in the trust list */
+                cmpVal = ASN1_OCTET_STRING_cmp(trusted_cert_keyid, remote_cert_keyid);
+                if (cmpVal == 0){
+                    ret = UA_STATUSCODE_GOOD;
+                    goto cleanup;
+                }
+            }
+        }
+
+        /* Return expected OPCUA error code */
         ret = UA_X509_Store_CTX_Error_To_UAError (opensslRet);
     }
 cleanup:
@@ -510,30 +578,22 @@ cleanup:
     if (certificateX509 != NULL) {
         X509_free (certificateX509);
     }
-    return ret;                                       
+    return ret;
 }
 
 static UA_StatusCode
-UA_VerifyCertificateAllowAll (void *                verificationContext,
-                              const UA_ByteString * certificate) {
-    (void) verificationContext;
-    (void) certificate;
-    return UA_STATUSCODE_GOOD;  
-}
-
-static UA_StatusCode 
 UA_CertificateVerification_VerifyApplicationURI (void *                verificationContext,
                                                  const UA_ByteString * certificate,
                                                  const UA_String *     applicationURI) {
     (void) verificationContext;
 
-    const unsigned char * pData; 
+    const unsigned char * pData;
     X509 *                certificateX509;
     UA_String             subjectURI;
     GENERAL_NAMES *       pNames;
     int                   i;
     UA_StatusCode         ret;
-    
+
     pData = certificate->data;
     if (pData == NULL) {
         return UA_STATUSCODE_BADSECURITYCHECKSFAILED;
@@ -542,7 +602,7 @@ UA_CertificateVerification_VerifyApplicationURI (void *                verificat
     certificateX509 = UA_OpenSSL_LoadCertificate(certificate);
     if (certificateX509 == NULL) {
         return UA_STATUSCODE_BADSECURITYCHECKSFAILED;
-    } 
+    }
 
     pNames = (GENERAL_NAMES *) X509_get_ext_d2i(certificateX509, NID_subject_alt_name, 
                                                 NULL, NULL);
@@ -563,18 +623,18 @@ UA_CertificateVerification_VerifyApplicationURI (void *                verificat
              (void) memcpy (subjectURI.data, value->d.ia5->data, subjectURI.length);
              break;
          }
-         
+
     }
 
-    ret = UA_STATUSCODE_BADSECURITYCHECKSFAILED;
-    if (UA_Bstrstr (subjectURI.data, subjectURI.length, 
-                    applicationURI->data, applicationURI->length) != NULL) {
-        ret = UA_STATUSCODE_GOOD;
+    ret = UA_STATUSCODE_GOOD;
+    if (UA_Bstrstr (subjectURI.data, subjectURI.length,
+                    applicationURI->data, applicationURI->length) == NULL) {
+        ret = UA_STATUSCODE_BADCERTIFICATEURIINVALID;
     }
 
     X509_free (certificateX509);
     sk_GENERAL_NAME_pop_free(pNames, GENERAL_NAME_free);
-    UA_String_clear (&subjectURI);    
+    UA_String_clear (&subjectURI);
     return ret;
 }
 
@@ -592,7 +652,7 @@ UA_CertificateVerification_Trustlist(UA_CertificateVerification * cv,
 
     if (cv == NULL) {
         return UA_STATUSCODE_BADINTERNALERROR;
-    }   
+    }
 
     CertContext * context = (CertContext *) UA_malloc (sizeof (CertContext));
     if (context == NULL) {
@@ -606,10 +666,7 @@ UA_CertificateVerification_Trustlist(UA_CertificateVerification * cv,
     cv->verifyApplicationURI = UA_CertificateVerification_VerifyApplicationURI;
     cv->clear = UA_CertificateVerification_clear;
     cv->context = context;
-    if (certificateTrustListSize > 0)
-        cv->verifyCertificate = UA_CertificateVerification_Verify;
-    else
-        cv->verifyCertificate = UA_VerifyCertificateAllowAll;
+    cv->verifyCertificate = UA_CertificateVerification_Verify;
     
     if (certificateTrustListSize > 0) {
         if (UA_skTrusted_Cert2X509 (certificateTrustList, certificateTrustListSize,
@@ -677,4 +734,4 @@ UA_CertificateVerification_CertFolders(UA_CertificateVerification * cv,
 }
 #endif
 
-#endif  /* end of UA_ENABLE_ENCRYPTION_OPENSSL */
+#endif  /* end of defined(UA_ENABLE_ENCRYPTION_OPENSSL) || defined(UA_ENABLE_ENCRYPTION_LIBRESSL) */

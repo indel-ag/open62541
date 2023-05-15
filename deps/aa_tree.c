@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. 
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  *
  *    Copyright 2020 (c) Fraunhofer IOSB (Author: Julius Pfrommer)
  */
@@ -8,7 +8,9 @@
 #include "aa_tree.h"
 #include <stddef.h>
 
-#if !defined(_MSC_VER) || _MSC_VER >= 1800
+#ifdef UNDER_CE
+  /* Windows CE: uintptr_t has already been defined by windows.h */
+#elif !defined(_MSC_VER) || _MSC_VER >= 1800
 # include <inttypes.h>
 #elif !defined(uintptr_t)
   /* Workaround missing standard includes in older Visual Studio */
@@ -113,24 +115,16 @@ aa_insert(struct aa_head *h, void *elem) {
     h->root = _aa_insert(h, h->root, elem);
 }
 
-static struct aa_entry *
-_aa_find(const struct aa_head *h, struct aa_entry *n, const void *key) {
-    if(!n)
-        return NULL;
-    enum aa_cmp eq = h->cmp(key, aa_entry_key(h, n));
-    if(eq == AA_CMP_EQ)
-        return n;
-    if(eq == AA_CMP_LESS)
-        return _aa_find(h, n->left, key);
-    return _aa_find(h, n->right, key);
-}
-
 void *
 aa_find(const struct aa_head *h, const void *key) {
-    struct aa_entry *n = _aa_find(h, h->root, key);
-    if(!n)
-        return NULL;
-    return aa_entry_container(h, n);
+    struct aa_entry *n = h->root;
+    while(n) {
+        enum aa_cmp eq = h->cmp(key, aa_entry_key(h, n));
+        if(eq == AA_CMP_EQ)
+            return aa_entry_container(h, n);
+        n = (eq == AA_CMP_LESS) ? n->left : n->right;
+    }
+    return NULL;
 }
 
 static struct aa_entry *
@@ -154,20 +148,13 @@ unlink_pred(struct aa_entry *n, struct aa_entry **pred) {
 }
 
 static struct aa_entry *
-_aa_remove(struct aa_head *h, struct aa_entry *n, void *elem) {
+_aa_remove(struct aa_head *h, void *elem, struct aa_entry *n) {
     if(!n)
         return NULL;
+
+    const void *elem_key = aa_container_key(h, elem);
     const void *n_key = aa_entry_key(h, n);
-    const void *key = aa_container_key(h, elem);
-    if(n_key != key) {
-        enum aa_cmp eq = h->cmp(key, n_key);
-        if(eq == AA_CMP_EQ)
-            eq = (key > n_key) ? AA_CMP_MORE : AA_CMP_LESS;
-        if(eq == AA_CMP_LESS)
-            n->left = _aa_remove(h, n->left, elem);
-        else
-            n->right = _aa_remove(h, n->right, elem);
-    } else {
+    if(n_key == elem_key) {
         if(!n->left && !n->right)
             return NULL;
         struct aa_entry *replace = NULL;
@@ -178,14 +165,22 @@ _aa_remove(struct aa_head *h, struct aa_entry *n, void *elem) {
         replace->left = n->left;
         replace->right = n->right;
         replace->level = n->level;
-        n = replace;
+        return _aa_fixup(replace);
     }
+
+    enum aa_cmp eq = h->cmp(elem_key, n_key);
+    if(eq == AA_CMP_EQ)
+        eq = (elem_key > n_key) ? AA_CMP_MORE : AA_CMP_LESS;
+    if(eq == AA_CMP_LESS)
+        n->left = _aa_remove(h, elem, n->left);
+    else
+        n->right = _aa_remove(h, elem, n->right);
     return _aa_fixup(n);
 }
 
 void
 aa_remove(struct aa_head *head, void *elem) {
-    head->root = _aa_remove(head, head->root, elem);
+    head->root = _aa_remove(head, elem, head->root);
 }
 
 void *

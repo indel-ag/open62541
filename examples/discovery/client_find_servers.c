@@ -33,7 +33,7 @@ int main(void) {
                          "Is the discovery server started? StatusCode %s",
                          UA_StatusCode_name(retval));
             UA_Client_delete(client);
-            return EXIT_FAILURE;
+            return EXIT_SUCCESS;
         }
 
         // output all the returned/registered servers
@@ -41,7 +41,7 @@ int main(void) {
             UA_ServerOnNetwork *server = &serverOnNetwork[i];
             printf("Server[%lu]: %.*s", (unsigned long) i,
                    (int) server->serverName.length, server->serverName.data);
-            printf("\n\tRecordID: %d", server->recordId);
+            printf("\n\tRecordID: %u", server->recordId);
             printf("\n\tDiscovery URL: %.*s", (int) server->discoveryUrl.length,
                    server->discoveryUrl.data);
             printf("\n\tCapabilities: ");

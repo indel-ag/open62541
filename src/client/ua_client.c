@@ -18,8 +18,7 @@
  *    Copyright 2020 (c) Christian von Arnim, ISW University of Stuttgart
  */
 
-#include <open62541/types_generated_encoding_binary.h>
-#include "open62541/transport_generated.h"
+#include <open62541/transport_generated.h>
 
 #include "ua_client_internal.h"
 #include "ua_connection_internal.h"
@@ -60,6 +59,8 @@ UA_ClientConfig_clear(UA_ClientConfig *config) {
     UA_EndpointDescription_clear(&config->endpoint);
     UA_UserTokenPolicy_clear(&config->userTokenPolicy);
 
+    UA_String_clear(&config->applicationUri);
+
     if(config->certificateVerification.clear)
         config->certificateVerification.clear(&config->certificateVerification);
 
@@ -76,15 +77,29 @@ UA_ClientConfig_clear(UA_ClientConfig *config) {
         config->logger.clear(config->logger.context);
     config->logger.log = NULL;
     config->logger.clear = NULL;
+
+    if (config->sessionLocaleIdsSize > 0 && config->sessionLocaleIds) {
+        UA_Array_delete(config->sessionLocaleIds, config->sessionLocaleIdsSize, &UA_TYPES[UA_TYPES_LOCALEID]);
+    }
+    config->sessionLocaleIds = NULL;
+    config->sessionLocaleIdsSize = 0;
 }
 
 static void
 UA_Client_clear(UA_Client *client) {
+    /* Prevent new async service calls in UA_Client_AsyncService_removeAll */
+    UA_SessionState oldState = client->sessionState;
+    client->sessionState = UA_SESSIONSTATE_CLOSING;
+
     /* Delete the async service calls with BADHSUTDOWN */
     UA_Client_AsyncService_removeAll(client, UA_STATUSCODE_BADSHUTDOWN);
 
+    /* Reset to the old state to properly close the session */
+    client->sessionState = oldState;
+
     UA_Client_disconnect(client);
     UA_String_clear(&client->endpointUrl);
+    UA_String_clear(&client->discoveryUrl);
 
     UA_String_clear(&client->remoteNonce);
     UA_String_clear(&client->localNonce);
@@ -124,9 +139,9 @@ UA_Client_getConfig(UA_Client *client) {
 }
 
 #if UA_LOGLEVEL <= 300
-static const char *channelStateTexts[8] = {
-    "Closed", "HELSent", "HELReceived", "ACKSent",
-    "AckReceived", "OPNSent", "Open", "Closing"};
+static const char *channelStateTexts[9] = {
+    "Fresh", "HELSent", "HELReceived", "ACKSent",
+    "AckReceived", "OPNSent", "Open", "Closing", "Closed"};
 static const char *sessionStateTexts[6] =
     {"Closed", "CreateRequested", "Created",
      "ActivateRequested", "Activated", "Closing"};
@@ -211,7 +226,7 @@ sendSymmetricServiceRequest(UA_Client *client, const void *request,
                          (unsigned)rqId, requestType->typeName);
 #else
     UA_LOG_DEBUG_CHANNEL(&client->config.logger, &client->channel,
-                         "Sending request with RequestId %u of type %" PRIi16,
+                         "Sending request with RequestId %u of type %" PRIu32,
                          (unsigned)rqId, requestType->binaryEncodingId.identifier.numeric);
 #endif
 
@@ -271,14 +286,14 @@ processAsyncResponse(UA_Client *client, UA_UInt32 requestId, const UA_NodeId *re
     }
 
     /* Decode the response */
-    retval = UA_decodeBinary(responseMessage, offset, &response, responseType,
-                             client->config.customDataTypes);
+    retval = UA_decodeBinaryInternal(responseMessage, offset, &response, responseType,
+                                     client->config.customDataTypes);
 
  process:
     if(retval != UA_STATUSCODE_GOOD) {
         UA_LOG_INFO(&client->config.logger, UA_LOGCATEGORY_CLIENT,
                     "Could not decode the response with id %u due to %s",
-                    requestId, UA_StatusCode_name(retval));
+                    (unsigned)requestId, UA_StatusCode_name(retval));
         response.responseHeader.serviceResult = retval;
     } else if(response.responseHeader.serviceResult != UA_STATUSCODE_GOOD) {
         /* Decode as a ServiceFault, i.e. only the response header */
@@ -347,9 +362,9 @@ processServiceResponse(void *application, UA_SecureChannel *channel,
     if(!UA_NodeId_equal(&responseId, &rd->responseType->binaryEncodingId)) {
         if(UA_NodeId_equal(&responseId, &serviceFaultId)) {
             UA_init(rd->response, rd->responseType);
-            retval = UA_decodeBinary(message, &offset, rd->response,
-                                     &UA_TYPES[UA_TYPES_SERVICEFAULT],
-                                     rd->client->config.customDataTypes);
+            retval = UA_decodeBinaryInternal(message, &offset, rd->response,
+                                             &UA_TYPES[UA_TYPES_SERVICEFAULT],
+                                             rd->client->config.customDataTypes);
             if(retval != UA_STATUSCODE_GOOD)
                 ((UA_ResponseHeader*)rd->response)->serviceResult = retval;
             UA_LOG_INFO(&rd->client->config.logger, UA_LOGCATEGORY_CLIENT,
@@ -373,8 +388,8 @@ processServiceResponse(void *application, UA_SecureChannel *channel,
 #endif
 
     /* Decode the response */
-    retval = UA_decodeBinary(message, &offset, rd->response, rd->responseType,
-                             rd->client->config.customDataTypes);
+    retval = UA_decodeBinaryInternal(message, &offset, rd->response, rd->responseType,
+                                     rd->client->config.customDataTypes);
 
 finish:
     UA_NodeId_clear(&responseId);
@@ -398,7 +413,7 @@ finish:
  * timout finishes */
 static UA_StatusCode
 receiveResponse(UA_Client *client, void *response, const UA_DataType *responseType,
-                UA_UInt32 timeout, const UA_UInt32 *synchronousRequestId) {
+                UA_DateTime maxDate, const UA_UInt32 *synchronousRequestId) {
     /* Prepare the response and the structure we give into processServiceResponse */
     SyncResponseDescription rd = { client, false, 0, response, responseType };
 
@@ -407,13 +422,12 @@ receiveResponse(UA_Client *client, void *response, const UA_DataType *responseTy
     if(synchronousRequestId)
         rd.requestId = *synchronousRequestId;
 
-    UA_DateTime now = UA_DateTime_nowMonotonic();
-    UA_DateTime maxDate = now + ((UA_DateTime)timeout * UA_DATETIME_MSEC);
     UA_StatusCode retval = UA_STATUSCODE_GOOD;
+    UA_DateTime now = UA_DateTime_nowMonotonic();
     do {
-        if(maxDate < now)
-            return UA_STATUSCODE_GOODNONCRITICALTIMEOUT;
         UA_UInt32 timeout2 = (UA_UInt32)((maxDate - now) / UA_DATETIME_MSEC);
+        if(maxDate < now)
+            timeout2 = 0;
         retval = UA_SecureChannel_receive(&client->channel, &rd, processServiceResponse, timeout2);
         if(retval == UA_STATUSCODE_GOODNONCRITICALTIMEOUT)
             break;
@@ -427,6 +441,8 @@ receiveResponse(UA_Client *client, void *response, const UA_DataType *responseTy
             break;
         }
         now = UA_DateTime_nowMonotonic();
+        if(maxDate < now)
+            break;
     } while(!rd.received && responseType); /* Return if we don't wait for an async response */
 
     return retval;
@@ -434,7 +450,8 @@ receiveResponse(UA_Client *client, void *response, const UA_DataType *responseTy
 
 UA_StatusCode
 receiveResponseAsync(UA_Client *client, UA_UInt32 timeout) {
-    UA_StatusCode res = receiveResponse(client, NULL, NULL, timeout, NULL);
+    UA_DateTime maxDate = UA_DateTime_nowMonotonic() + ((UA_DateTime)timeout * UA_DATETIME_MSEC);
+    UA_StatusCode res = receiveResponse(client, NULL, NULL, maxDate, NULL);
     return (res != UA_STATUSCODE_GOODNONCRITICALTIMEOUT) ? res : UA_STATUSCODE_GOOD;
 }
 
@@ -460,7 +477,8 @@ __UA_Client_Service(UA_Client *client, const void *request,
     UA_ResponseHeader *respHeader = (UA_ResponseHeader*)response;
     if(retval == UA_STATUSCODE_GOOD) {
         /* Retrieve the response */
-        retval = receiveResponse(client, response, responseType, client->config.timeout, &requestId);
+        UA_DateTime maxDate = UA_DateTime_nowMonotonic() + ((UA_DateTime)client->config.timeout * UA_DATETIME_MSEC);
+        retval = receiveResponse(client, response, responseType, maxDate, &requestId);
     } else if(retval == UA_STATUSCODE_BADENCODINGLIMITSEXCEEDED) {
         respHeader->serviceResult = UA_STATUSCODE_BADREQUESTTOOLARGE;
         return;
@@ -592,13 +610,14 @@ UA_StatusCode
 UA_Client_addRepeatedCallback(UA_Client *client, UA_ClientCallback callback,
                               void *data, UA_Double interval_ms, UA_UInt64 *callbackId) {
     return UA_Timer_addRepeatedCallback(&client->timer, (UA_ApplicationCallback)callback,
-                                        client, data, interval_ms, callbackId);
+                                        client, data, interval_ms, NULL,
+                                        UA_TIMER_HANDLE_CYCLEMISS_WITH_CURRENTTIME, callbackId);
 }
 
 UA_StatusCode
 UA_Client_changeRepeatedCallbackInterval(UA_Client *client, UA_UInt64 callbackId,
                                          UA_Double interval_ms) {
-    return UA_Timer_changeRepeatedCallbackInterval(&client->timer, callbackId, interval_ms);
+    return UA_Timer_changeRepeatedCallback(&client->timer, callbackId, interval_ms, NULL, UA_TIMER_HANDLE_CYCLEMISS_WITH_CURRENTTIME);
 }
 
 void
@@ -673,12 +692,17 @@ UA_StatusCode
 UA_Client_run_iterate(UA_Client *client, UA_UInt32 timeout) {
     /* Process timed (repeated) jobs */
     UA_DateTime now = UA_DateTime_nowMonotonic();
-    UA_Timer_process(&client->timer, now,
-                     (UA_TimerExecutionCallback)clientExecuteRepeatedCallback, client);
+    UA_DateTime maxDate =
+        UA_Timer_process(&client->timer, now, (UA_TimerExecutionCallback)
+                         clientExecuteRepeatedCallback, client);
+    if(maxDate > now + ((UA_DateTime)timeout * UA_DATETIME_MSEC))
+        maxDate = now + ((UA_DateTime)timeout * UA_DATETIME_MSEC);
 
     /* Make sure we have an open channel */
     UA_StatusCode retval = UA_STATUSCODE_GOOD;
-    if((client->noSession && client->channel.state != UA_SECURECHANNELSTATE_OPEN) ||
+    if(client->endpointsHandshake || client->findServersHandshake ||
+       client->discoveryUrl.length == 0 ||
+       (client->noSession && client->channel.state != UA_SECURECHANNELSTATE_OPEN) ||
        client->sessionState < UA_SESSIONSTATE_ACTIVATED) {
         retval = connectIterate(client, timeout);
         notifyClientState(client);
@@ -699,7 +723,7 @@ UA_Client_run_iterate(UA_Client *client, UA_UInt32 timeout) {
     UA_Client_backgroundConnectivity(client);
 
     /* Listen on the network for the given timeout */
-    retval = receiveResponse(client, NULL, NULL, timeout, NULL);
+    retval = receiveResponse(client, NULL, NULL, maxDate, NULL);
     if(retval == UA_STATUSCODE_GOODNONCRITICALTIMEOUT)
         retval = UA_STATUSCODE_GOOD;
     if(retval != UA_STATUSCODE_GOOD) {

@@ -184,6 +184,8 @@ UA_DiscoveryManager_removeEntryFromServersOnNetwork(UA_Server *server, const cha
         return UA_STATUSCODE_BADNOTFOUND;
 
     UA_String recordStr;
+    // Cast away const because otherwise the pointer cannot be assigned.
+    // Be careful what you do with recordStr!
     recordStr.data = (UA_Byte*)(uintptr_t)fqdnMdnsRecord;
     recordStr.length = strlen(fqdnMdnsRecord);
 
@@ -225,6 +227,7 @@ mdns_append_path_to_url(UA_String *url, const char *path) {
     char *newUrl = (char *)UA_malloc(url->length + pathLen);
     memcpy(newUrl, url->data, url->length);
     memcpy(newUrl + url->length, path, pathLen);
+    UA_String_clear(url);
     url->length = url->length + pathLen;
     url->data = (UA_Byte *) newUrl;
 }
@@ -338,7 +341,7 @@ mdns_record_received(const struct resource *r, void *data) {
         return;
 
     UA_String recordStr;
-    recordStr.data = (UA_Byte*)(uintptr_t)r->name;
+    recordStr.data = (UA_Byte*)r->name;
     recordStr.length = strlen(r->name);
     UA_Boolean isSelfAnnounce = UA_String_equal(&server->discoveryManager.selfFqdnMdnsRecord, &recordStr);
     if (isSelfAnnounce)
@@ -410,15 +413,20 @@ mdns_create_txt(UA_Server *server, const char *fullServiceDomain, const char *pa
         size_t pathLen = strlen(path);
         if(path[0] == '/') {
             allocPath = (char*)UA_malloc(pathLen+1);
-            if (!allocPath) {
-                UA_LOG_ERROR(&server->config.logger, UA_LOGCATEGORY_SERVER, "Cannot alloc memory for txt path");
+            if(!allocPath) {
+                UA_LOG_ERROR(&server->config.logger, UA_LOGCATEGORY_SERVER,
+                             "Cannot alloc memory for txt path");
                 return;
             }
-            memcpy(&allocPath, &path, pathLen);
+            memcpy(allocPath, path, pathLen);
             allocPath[pathLen] = '\0';
         } else {
-            /* todo: malloc may fail: return a statuscode */
             allocPath = (char*)UA_malloc(pathLen + 2);
+            if(!allocPath) {
+                UA_LOG_ERROR(&server->config.logger, UA_LOGCATEGORY_SERVER,
+                             "Cannot alloc memory for txt path");
+                return;
+            }
             allocPath[0] = '/';
             memcpy(allocPath + 1, path, pathLen);
             allocPath[pathLen + 1] = '\0';
@@ -556,7 +564,8 @@ void mdns_set_address_record(UA_Server *server, const char *fullServiceDomain,
 void
 mdns_set_address_record(UA_Server *server, const char *fullServiceDomain,
                         const char *localDomain) {
-    struct ifaddrs *ifaddr, *ifa;
+    struct ifaddrs *ifaddr;
+    struct ifaddrs *ifa;
     if(getifaddrs(&ifaddr) == -1) {
         UA_LOG_ERROR(&server->config.logger, UA_LOGCATEGORY_SERVER,
                      "getifaddrs returned an unexpected error. Not setting mDNS A records.");

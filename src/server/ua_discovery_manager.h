@@ -99,7 +99,7 @@ typedef struct {
     UA_Server_serverOnNetworkCallback serverOnNetworkCallback;
     void* serverOnNetworkCallbackData;
 
-#if UA_MULTITHREADING >= 200
+#if UA_MULTITHREADING >= 100
     pthread_t mdnsThread;
     UA_Boolean mdnsRunning;
 #  endif
@@ -143,6 +143,9 @@ void mdns_set_address_record(UA_Server *server,
 mdns_record_t *
 mdns_find_record(mdns_daemon_t *mdnsDaemon, unsigned short type,
                  const char *host, const char *rdname);
+
+UA_StatusCode
+initMulticastDiscoveryServer(UA_DiscoveryManager *dm, UA_Server* server);
 
 void startMulticastDiscoveryServer(UA_Server *server);
 

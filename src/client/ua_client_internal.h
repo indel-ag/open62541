@@ -99,13 +99,11 @@ void
 UA_Client_AsyncService_removeAll(UA_Client *client, UA_StatusCode statusCode);
 
 typedef struct CustomCallback {
-    LIST_ENTRY(CustomCallback) pointers;
     UA_UInt32 callbackId;
 
     UA_ClientAsyncServiceCallback userCallback;
     void *userData;
 
-    bool isAsync;
     void *clientData;
 } CustomCallback;
 
@@ -121,12 +119,16 @@ struct UA_Client {
     UA_SessionState oldSessionState;
     UA_StatusCode oldConnectStatus;
 
+    UA_Boolean findServersHandshake;   /* Ongoing FindServers */
     UA_Boolean endpointsHandshake;     /* Ongoing GetEndpoints */
     UA_Boolean noSession;              /* Don't open a session */
 
     /* Connection */
     UA_Connection connection;
-    UA_String endpointUrl; /* Only for the async connect */
+    UA_String endpointUrl;  /* Used to extract address and port */
+    UA_String discoveryUrl; /* The discoveryUrl (also used to signal which
+                               application we want to connect to in the HEL/ACK
+                               handshake). */
 
     /* SecureChannel */
     UA_SecureChannel channel;
@@ -146,7 +148,6 @@ struct UA_Client {
 
     /* Async Service */
     LIST_HEAD(, AsyncServiceCall) asyncServiceCalls;
-    LIST_HEAD(, CustomCallback) customCallbacks;
 
     /* Subscriptions */
 #ifdef UA_ENABLE_SUBSCRIPTIONS
@@ -168,6 +169,11 @@ connectIterate(UA_Client *client, UA_UInt32 timeout);
 
 UA_StatusCode
 receiveResponseAsync(UA_Client *client, UA_UInt32 timeout);
+
+void
+Client_warnEndpointsResult(UA_Client *client,
+                           const UA_GetEndpointsResponse *response,
+                           const UA_String *endpointUrl);
 
 _UA_END_DECLS
 

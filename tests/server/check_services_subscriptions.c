@@ -16,6 +16,7 @@
 static UA_Server *server = NULL;
 static UA_Session *session = NULL;
 static UA_UInt32 monitored = 0; /* Number of active MonitoredItems */
+static UA_Double defaultRequestedPublishingInterval = 100;  /* in ms */
 
 static void
 monitoredRegisterCallback(UA_Server *s,
@@ -142,7 +143,7 @@ START_TEST(Server_modifySubscription) {
     UA_ModifySubscriptionRequest_init(&request);
     request.subscriptionId = subscriptionId;
     // just some arbitrary numbers to test. They have no specific reason
-    request.requestedPublishingInterval = 100; // in ms
+    request.requestedPublishingInterval = defaultRequestedPublishingInterval;
     request.requestedLifetimeCount = 1000;
     request.requestedMaxKeepAliveCount = 1000;
     request.maxNotificationsPerPublish = 1;
@@ -380,7 +381,7 @@ START_TEST(Server_overflow) {
     UA_ReadValueId rvi;
     UA_ReadValueId_init(&rvi);
     rvi.nodeId = UA_NODEID_NUMERIC(0, UA_NS0ID_SERVER_SERVERSTATUS_CURRENTTIME);
-    rvi.attributeId = UA_ATTRIBUTEID_BROWSENAME;
+    rvi.attributeId = UA_ATTRIBUTEID_VALUE;
     rvi.indexRange = UA_STRING_NULL;
     item.itemToMonitor = rvi;
     item.monitoringMode = UA_MONITORINGMODE_REPORTING;
@@ -422,21 +423,24 @@ START_TEST(Server_overflow) {
     notification = TAILQ_LAST(&mon->queue, NotificationQueue);
     ck_assert_uint_eq(notification->data.dataChange.value.hasStatus, false);
 
-    UA_ByteString_clear(&mon->lastSampledValue);
+    UA_fakeSleep(1); /* modify the server's currenttime */
+
     UA_MonitoredItem_sampleCallback(server, mon);
     ck_assert_uint_eq(mon->queueSize, 2);
     ck_assert_uint_eq(mon->parameters.queueSize, 3);
     notification = TAILQ_LAST(&mon->queue, NotificationQueue);
     ck_assert_uint_eq(notification->data.dataChange.value.hasStatus, false);
 
-    UA_ByteString_clear(&mon->lastSampledValue);
+    UA_fakeSleep(1); /* modify the server's currenttime */
+
     UA_MonitoredItem_sampleCallback(server, mon);
     ck_assert_uint_eq(mon->queueSize, 3);
     ck_assert_uint_eq(mon->parameters.queueSize, 3);
     notification = TAILQ_LAST(&mon->queue, NotificationQueue);
     ck_assert_uint_eq(notification->data.dataChange.value.hasStatus, false);
 
-    UA_ByteString_clear(&mon->lastSampledValue);
+    UA_fakeSleep(1); /* modify the server's currenttime */
+
     UA_MonitoredItem_sampleCallback(server, mon);
     ck_assert_uint_eq(mon->queueSize, 3);
     ck_assert_uint_eq(mon->parameters.queueSize, 3);
@@ -806,7 +810,7 @@ START_TEST(Server_invalidPublishingInterval) {
 }
 END_TEST
 
-START_TEST(Server_invalidSamplingInterval) {
+START_TEST(Server_negativeSamplingInterval) {
     createSubscription();
 
     UA_Double savedSamplingIntervalLimitsMin = server->config.samplingIntervalLimits.min;
@@ -827,7 +831,7 @@ START_TEST(Server_invalidSamplingInterval) {
     item.monitoringMode = UA_MONITORINGMODE_REPORTING;
     UA_MonitoringParameters params;
     UA_MonitoringParameters_init(&params);
-    params.samplingInterval = -5.0; // Must be positive
+    params.samplingInterval = -5.0;
     item.requestedParameters = params;
     request.itemsToCreateSize = 1;
     request.itemsToCreate = &item;
@@ -840,8 +844,7 @@ START_TEST(Server_invalidSamplingInterval) {
     ck_assert_uint_eq(response.responseHeader.serviceResult, UA_STATUSCODE_GOOD);
     ck_assert_uint_eq(response.resultsSize, 1);
     ck_assert_uint_eq(response.results[0].statusCode, UA_STATUSCODE_GOOD);
-    ck_assert(response.results[0].revisedSamplingInterval ==
-              server->config.samplingIntervalLimits.min);
+    ck_assert(response.results[0].revisedSamplingInterval == -1.0);
 
     UA_MonitoredItemCreateRequest_clear(&item);
     UA_CreateMonitoredItemsResponse_clear(&response);
@@ -860,7 +863,7 @@ static Suite* testSuite_Client(void) {
     tcase_add_test(tc_server, Server_createSubscription);
     tcase_add_test(tc_server, Server_modifySubscription);
     tcase_add_test(tc_server, Server_setPublishingMode);
-    tcase_add_test(tc_server, Server_invalidSamplingInterval);
+    tcase_add_test(tc_server, Server_negativeSamplingInterval);
     tcase_add_test(tc_server, Server_createMonitoredItems);
     tcase_add_test(tc_server, Server_modifyMonitoredItems);
     tcase_add_test(tc_server, Server_overflow);

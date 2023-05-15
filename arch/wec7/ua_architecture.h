@@ -76,6 +76,15 @@ void UA_sleep_ms(unsigned long ms);
 #define UA_WOULDBLOCK WSAEWOULDBLOCK
 #define UA_ERR_CONNECTION_PROGRESS WSAEWOULDBLOCK
 
+typedef struct pollfd {
+  SOCKET fd;
+  SHORT  events;
+  SHORT  revents;
+} WSAPOLLFD, *PWSAPOLLFD, *LPWSAPOLLFD;
+
+#define UA_POLLIN 0
+#define UA_POLLOUT 0
+
 #define UA_fd_set(fd, fds) FD_SET((UA_SOCKET)fd, fds)
 #define UA_fd_isset(fd, fds) FD_ISSET((UA_SOCKET)fd, fds)
 
@@ -84,10 +93,12 @@ void UA_sleep_ms(unsigned long ms);
 #endif
 
 #define UA_getnameinfo getnameinfo
+#define UA_poll(fds,nfds,timeout) 1
 #define UA_send(sockfd, buf, len, flags) send(sockfd, buf, (int)(len), flags)
 #define UA_recv recv
 #define UA_sendto(sockfd, buf, len, flags, dest_addr, addrlen) sendto(sockfd, (const char*)(buf), (int)(len), flags, dest_addr, (int) (addrlen))
 #define UA_recvfrom(sockfd, buf, len, flags, src_addr, addrlen) recvfrom(sockfd, (char*)(buf), (int)(len), flags, src_addr, addrlen)
+#define UA_recvmsg
 #define UA_htonl htonl
 #define UA_ntohl ntohl
 #define UA_close closesocket
@@ -101,6 +112,7 @@ void UA_sleep_ms(unsigned long ms);
 #define UA_getaddrinfo getaddrinfo
 #define UA_getsockopt getsockopt
 #define UA_setsockopt(sockfd, level, optname, optval, optlen) setsockopt(sockfd, level, optname, (const char*) (optval), optlen)
+#define UA_ioctl
 #define UA_freeaddrinfo freeaddrinfo
 #define UA_gethostname gethostname
 #define UA_getsockname getsockname

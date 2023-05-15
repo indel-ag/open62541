@@ -88,8 +88,8 @@ START_TEST(Client_connect_async) {
     UA_BrowseRequest_clear(&bReq);
     ck_assert_uint_eq(connected, true);
     ck_assert_uint_eq(retval, UA_STATUSCODE_GOOD);
-    /* With default setting the client uses 4 requests to connect */
-    ck_assert_uint_eq(asyncCounter, 10-4);
+    /* With default setting the client uses 7 iterations to connect */
+    ck_assert_uint_eq(asyncCounter, 10-7);
     UA_Client_disconnectAsync(client);
     while(connected) {
         UA_Server_run_iterate(server, false);
@@ -115,13 +115,14 @@ START_TEST(Client_connect_async_abort) {
     cc->stateCallback = abortSecureChannelConnect;
 
     for(int i = UA_SECURECHANNELSTATE_HEL_SENT;
-        i < UA_SECURECHANNELSTATE_CLOSED; i++) {
+        i < UA_SECURECHANNELSTATE_CLOSING; i++) {
         abortState = (UA_SecureChannelState)i;
         UA_StatusCode retval = UA_Client_connectAsync(client, "opc.tcp://localhost:4840");
         ck_assert_uint_eq(retval, UA_STATUSCODE_GOOD);
 
         UA_SecureChannelState currentState;
         do {
+            UA_Server_run_iterate(server, false);
             UA_Client_run_iterate(client, 5);
             UA_Client_getState(client, &currentState, NULL, &retval);
         } while(currentState != UA_SECURECHANNELSTATE_CLOSED);
@@ -168,6 +169,25 @@ START_TEST(Client_without_run_iterate) {
 }
 END_TEST
 
+START_TEST(Client_run_iterate) {
+    UA_StatusCode retval;
+    UA_Client *client = UA_Client_new();
+    UA_ClientConfig *cc = UA_Client_getConfig(client);
+    UA_ClientConfig_setDefault(cc);
+    cc->stateCallback = currentState;
+    connected = false;
+    retval = UA_Client_connectAsync(client, "opc.tcp://localhost:4840");
+    ck_assert_uint_eq(retval, UA_STATUSCODE_GOOD);
+    while (!connected) {
+        UA_Server_run_iterate(server, false);
+        retval = UA_Client_run_iterate(client, 0);
+        ck_assert_uint_eq(retval, UA_STATUSCODE_GOOD);
+        sleep(0);
+    }
+    UA_Client_delete(client);
+}
+END_TEST
+
 static Suite* testSuite_Client(void) {
     Suite *s = suite_create("Client");
     TCase *tc_client_connect = tcase_create("Client Connect Async");
@@ -176,6 +196,7 @@ static Suite* testSuite_Client(void) {
     tcase_add_test(tc_client_connect, Client_connect_async_abort);
     tcase_add_test(tc_client_connect, Client_no_connection);
     tcase_add_test(tc_client_connect, Client_without_run_iterate);
+    tcase_add_test(tc_client_connect, Client_run_iterate);
     suite_add_tcase(s,tc_client_connect);
     return s;
 }

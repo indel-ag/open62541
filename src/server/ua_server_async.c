@@ -170,19 +170,19 @@ void
 UA_AsyncManager_clear(UA_AsyncManager *am, UA_Server *server) {
     removeCallback(server, am->checkTimeoutCallbackId);
 
-    UA_AsyncOperation *ar;
+    UA_AsyncOperation *ar, *ar_tmp;
 
     /* Clean up queues */
     UA_LOCK(&am->queueLock);
-    while((ar = TAILQ_FIRST(&am->newQueue))) {
-        TAILQ_REMOVE(&am->resultQueue, ar, pointers);
+    TAILQ_FOREACH_SAFE(ar, &am->newQueue, pointers, ar_tmp) {
+        TAILQ_REMOVE(&am->newQueue, ar, pointers);
         UA_AsyncOperation_delete(ar);
     }
-    while((ar = TAILQ_FIRST(&am->dispatchedQueue))) {
-        TAILQ_REMOVE(&am->resultQueue, ar, pointers);
+    TAILQ_FOREACH_SAFE(ar, &am->dispatchedQueue, pointers, ar_tmp) {
+        TAILQ_REMOVE(&am->dispatchedQueue, ar, pointers);
         UA_AsyncOperation_delete(ar);
     }
-    while((ar = TAILQ_FIRST(&am->resultQueue))) {
+    TAILQ_FOREACH_SAFE(ar, &am->resultQueue, pointers, ar_tmp) {
         TAILQ_REMOVE(&am->resultQueue, ar, pointers);
         UA_AsyncOperation_delete(ar);
     }
@@ -311,13 +311,6 @@ UA_Server_getAsyncOperationNonBlocking(UA_Server *server, UA_AsyncOperationType 
     UA_UNLOCK(&am->queueLock);
 
     return bRV;
-}
-
-UA_Boolean
-UA_Server_getAsyncOperation(UA_Server *server, UA_AsyncOperationType *type,
-                            const UA_AsyncOperationRequest **request,
-                            void **context) {
-    return UA_Server_getAsyncOperationNonBlocking(server, type, request, context, NULL);
 }
 
 /* Worker submits Method Call Response */
