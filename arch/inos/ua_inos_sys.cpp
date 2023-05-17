@@ -12,12 +12,116 @@
 #include <inos.h>
 #include <cinoseventlogger.h>
 #include <sockets.h>
+#include <cinosmalloc.h>
 // project
 #include "ua_inos_sys.h"
+
+
+//------------------------------------------------------------------------------
+// variables
+//------------------------------------------------------------------------------
+//
+#ifdef INOS_OPCUA_OMM
+//! allocator used for malloc() and friends
+CINOSMalloc gUaMemory("open62541");
+#endif
+
+
+//------------------------------------------------------------------------------
+// start functions
+//------------------------------------------------------------------------------
+//
+StartFunction(_INI_0100_ua_inos_sys) {
+	InitializeUaMemory();
+}
+
+
+//------------------------------------------------------------------------------
+// functions
+//------------------------------------------------------------------------------
+//
+void InitializeUaMemory()
+{
+#ifdef INOS_OPCUA_OMM
+	// critical section
+	static CINOSMutex s_Mutex;
+	CINOSLock lock(s_Mutex);
+
+	if (gUaMemory.GetNumPools() > 0) {
+		// already done
+		return;
+	}
+
+	// try to load pools from config
+	if (gUaMemory.LoadFromTable("open62541") == 0) {
+		/*
+		 * no config found -> use default
+		 *
+		 * The following configuration was picked based on observing the memory usage
+		 * while repeatedly executing the OPC UA unit tests.
+		 */
+		gUaMemory.AddPool(      4,  1024);
+		gUaMemory.AddPool(      8,  1024);
+		gUaMemory.AddPool(     16,  1024);
+		gUaMemory.AddPool(     64,  1024);
+		gUaMemory.AddPool(    128,   256);
+		gUaMemory.AddPool(    256,   256);
+		gUaMemory.AddPool(   1024,   256);  //   1 KB
+		gUaMemory.AddPool(  65536,    16);  //  64 KB
+		gUaMemory.AddPool( 131072,    16);  // 128 KB
+		gUaMemory.AddPool( 262144,    16);  // 256 KB
+	} // end if
+
+#endif
+}
 
 //------------------------------------------------------------------------------
 //
 extern "C" {
+
+//------------------------------------------------------------------------------
+//
+void* inos_malloc(size_t size)
+{
+#ifdef INOS_OPCUA_OMM
+	return gUaMemory.Malloc(size);
+#else
+	return malloc(size);
+#endif
+}
+
+//------------------------------------------------------------------------------
+//
+void* inos_calloc(size_t num, size_t size)
+{
+#ifdef INOS_OPCUA_OMM
+	return gUaMemory.Calloc(num, size);
+#else
+	return calloc(num, size);
+#endif
+}
+
+//------------------------------------------------------------------------------
+//
+void* inos_realloc(void* ptr, size_t size)
+{
+#ifdef INOS_OPCUA_OMM
+	return gUaMemory.Realloc(ptr, size);
+#else
+	return realloc(ptr, size);
+#endif
+}
+
+//------------------------------------------------------------------------------
+//
+void inos_free(void* ptr)
+{
+#ifdef INOS_OPCUA_OMM
+	gUaMemory.Free(ptr);
+#else
+	free(ptr);
+#endif
+}
 
 //------------------------------------------------------------------------------
 //
@@ -61,12 +165,15 @@ void inos_mutex_unlock(inos_mutex_t* mutex)
 int gethostname_inos(char* name, size_t len)
 {
 	int ret = 0;
-	if (!INOSGetSystemBoolean("OPCUA", "NumericHostname", false)) {
+	const char* apCustomHostname = INOSGetSystemString("OPCUA", "CustomHostname");
+	if (!apCustomHostname) {
 		// default case: return our MDNS hostname
 		ret = snprintf(name, len, "%s.local", TARGET.GetHostname());
 	} else {
-		// return IP
-		ret = snprintf(name, len, "%s", TARGET.GetIPAddressStr());
+		// return custom hostname
+		// we do this here because of deprecation of UA_ServerConfig_setCustomHostname
+		// see also ServerNetworkLayerTCP_start
+		ret = snprintf(name, len, "%s", apCustomHostname);
 	}
     if (ret>=0 && ret<(int)len) {
     	// success

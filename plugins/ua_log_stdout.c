@@ -10,12 +10,13 @@
 
 #include <stdio.h>
 
+#ifdef INOS
+#include "inos/ua_inos_log.h"
+#else
 #if UA_MULTITHREADING >= 100
 #include <pthread.h>
 static pthread_mutex_t printf_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
-#ifdef INOS
-#include "inos/ua_inos_log.h"
 #endif
 
 /* ANSI escape sequences for color output taken from here:

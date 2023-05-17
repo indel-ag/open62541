@@ -16,6 +16,10 @@
 #include "ua_server_internal.h"
 #include "ua_services.h"
 
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wpointer-bool-conversion"
+#endif
+
 /* Delayed callback to free the session memory */
 static void
 removeSessionCallback(UA_Server *server, session_list_entry *entry) {

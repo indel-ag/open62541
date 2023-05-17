@@ -18,6 +18,27 @@
 
 
 //------------------------------------------------------------------------------
+// variables
+//------------------------------------------------------------------------------
+
+#ifdef INOS_OPCUA_OMM
+#ifdef __cplusplus
+#include <cinosmalloc.h>
+
+//! allocator used for malloc() and friends
+extern CINOSMalloc gUaMemory;
+#endif // __cplusplus
+#endif // INOS_OPCUA_OMM
+
+
+//------------------------------------------------------------------------------
+// functions
+//------------------------------------------------------------------------------
+//
+void InitializeUaMemory();
+
+
+//------------------------------------------------------------------------------
 //
 #ifdef __cplusplus
 extern "C" {
@@ -36,6 +57,12 @@ typedef struct inos_mutex {
 // functions
 //-----------------------------------------------------------------------------
 //
+
+//! memory management
+void* inos_malloc(size_t size);
+void* inos_calloc(size_t num, size_t size);
+void* inos_realloc(void* ptr, size_t size);
+void inos_free(void* ptr);
 
 //! timing related
 uint64_t GetSystemMicroSeconds_inos();

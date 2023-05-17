@@ -381,6 +381,15 @@ Operation_CallMethodAsync(UA_Server *server, UA_Session *session, UA_UInt32 requ
     if(!method->methodNode.async) {
         callWithMethodAndObject(server, session, opRequest, opResult,
                                 &method->methodNode, &object->objectNode);
+        if (opResult->statusCode != UA_STATUSCODE_GOOD) {
+        	/* Destroy async response in case of error, as the response
+        	 * is sent synchronously in this case. */
+        	if (*ar) {
+        		UA_AsyncManager_removeAsyncResponse(&server->asyncManager, *ar);
+        		*ar = NULL;
+        	}
+        }
+
         goto cleanup;
     }
 

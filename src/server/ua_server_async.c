@@ -83,7 +83,7 @@ integrateOperationResult(UA_AsyncManager *am, UA_Server *server,
 }
 
 /* Process all operations in the result queue -> move content over to the
- * AsyncResponse. This is only done by the server thread. */
+ * AsyncResponse. This is possibly done by a worker thread. */
 static void
 processAsyncResults(UA_Server *server, void *data) {
     UA_AsyncManager *am = &server->asyncManager;
@@ -99,7 +99,9 @@ processAsyncResults(UA_Server *server, void *data) {
                      "UA_Server_CallMethodResponse: Got Response: OKAY");
         integrateOperationResult(am, server, ao);
         UA_AsyncOperation_delete(ao);
+        UA_LOCK(&am->queueLock);
         am->opsCount--;
+        UA_UNLOCK(&am->queueLock);
     }
 }
 
@@ -145,9 +147,6 @@ checkTimeouts(UA_Server *server, void *_) {
     }
 
     UA_UNLOCK(&am->queueLock);
-
-    /* Integrate async results and send out complete responses */
-    processAsyncResults(server, NULL);
 }
 
 void
@@ -368,6 +367,9 @@ UA_Server_setAsyncOperationResult(UA_Server *server,
 
     UA_LOG_DEBUG(&server->config.logger, UA_LOGCATEGORY_SERVER,
                  "Set the result from the worker thread");
+
+    /* Integrate async results and send out complete responses */
+    processAsyncResults(server, NULL);
 }
 
 /******************/

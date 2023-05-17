@@ -13,10 +13,10 @@
 //#define UA_ENABLE_DISCOVERY_MULTICAST
 
 
-#define UA_free free
-#define UA_malloc malloc
-#define UA_calloc calloc
-#define UA_realloc realloc
+#define UA_free inos_free
+#define UA_malloc inos_malloc
+#define UA_calloc inos_calloc
+#define UA_realloc inos_realloc
 #define UA_snprintf snprintf
 #define UA_sleep_ms(X) sleep_ms_inos(X)
 #define UA_gethostname gethostname_inos
