@@ -13,6 +13,10 @@
 //#define UA_ENABLE_DISCOVERY_MULTICAST
 
 
+#undef UA_free
+#undef UA_malloc
+#undef UA_calloc
+#undef UA_realloc
 #define UA_free inos_free
 #define UA_malloc inos_malloc
 #define UA_calloc inos_calloc
@@ -21,13 +25,14 @@
 #define UA_sleep_ms(X) sleep_ms_inos(X)
 #define UA_gethostname gethostname_inos
 #define UA_getaddrinfo getaddrinfo_inos
+#define UA_gai_strerror gai_strerror_inos
 #define UA_LOG_SOCKET_ERRNO_WRAP(LOG) { \
     char *errno_str = ""; \
     LOG; \
 }
 
 #include "ua_lwip.h"
-#include <open62541/architecture_functions.h>
+#include <open62541/config.h>
 #include "ua_inos_sys.h"
 
 //! TODO discovery semaphore currently not supported under INOS,

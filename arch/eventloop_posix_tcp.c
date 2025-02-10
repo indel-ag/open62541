@@ -435,7 +435,7 @@ TCP_registerListenSocket(UA_POSIXConnectionManager *pcm, struct addrinfo *ai,
                     "TCP %u\t| Creating listen socket for \"%s\" on port %u",
                     (unsigned)listenSocket, hostname, port);
     } else {
-        gethostname(hoststr, UA_MAXHOSTNAME_LENGTH);
+        UA_gethostname(hoststr, UA_MAXHOSTNAME_LENGTH);
         hostname = hoststr;
         UA_LOG_INFO(el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
                     "TCP %u\t| Creating listen socket for \"%s\" "
@@ -556,7 +556,7 @@ TCP_registerListenSockets(UA_POSIXConnectionManager *pcm, const char *hostname,
 #else
         UA_LOG_WARNING(pcm->cm.eventSource.eventLoop->logger, UA_LOGCATEGORY_NETWORK,
                        "TCP\t| Lookup for \"%s\" on port %u failed (%s)",
-                       hostname, port, gai_strerror(retcode));
+                       hostname, port, UA_gai_strerror(retcode));
 #endif
         return UA_STATUSCODE_BADINTERNALERROR;
     }
@@ -806,7 +806,7 @@ TCP_openActiveConnection(UA_POSIXConnectionManager *pcm, const UA_KeyValueMap *p
 #else
         UA_LOG_WARNING(el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
                        "TCP\t| Lookup of %s failed (%s)",
-                       hostname, gai_strerror(error));
+                       hostname, UA_gai_strerror(error));
 #endif
         return UA_STATUSCODE_BADINTERNALERROR;
     }

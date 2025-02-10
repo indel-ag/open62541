@@ -9,6 +9,10 @@
 #include "eventloop_posix.h"
 #include "eventloop_common.h"
 
+#if defined(UA_ARCHITECTURE_INOS)
+#include <inos/ua_architecture.h>
+#endif
+
 #define IPV4_PREFIX_MASK 0xF0
 #define IPV4_MULTICAST_PREFIX 0xE0
 #if UA_IPV6
@@ -65,7 +69,7 @@ typedef enum {
 } MultiCastType;
 
 typedef union {
-#ifdef UA_ARCHITECTURE_WIN32
+#if defined(UA_ARCHITECTURE_WIN32) || defined(UA_ARCHITECTURE_INOS)
     struct ip_mreq ipv4;
 #else
     struct ip_mreqn ipv4;

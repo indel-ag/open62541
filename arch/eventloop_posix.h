@@ -12,13 +12,15 @@
 #include <open62541/config.h>
 #include <open62541/plugin/eventloop.h>
 
-#if defined(UA_ARCHITECTURE_POSIX) || defined(UA_ARCHITECTURE_WIN32)
+#if defined(UA_ARCHITECTURE_POSIX) || defined(UA_ARCHITECTURE_WIN32) || defined(UA_ARCHITECTURE_INOS)
 
 /* Include architecture-specific definitions */
 #if defined(UA_ARCHITECTURE_WIN32)
 #include "win32/ua_architecture.h"
 #elif defined(UA_ARCHITECTURE_POSIX)
 #include "posix/ua_architecture.h"
+#elif defined(UA_ARCHITECTURE_INOS)
+#include "inos/ua_architecture.h"
 #endif
 
 #include "common/ua_timer.h"

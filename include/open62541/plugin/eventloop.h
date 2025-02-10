@@ -432,7 +432,7 @@ struct UA_InterruptManager {
  * The POSIX compatibility of WIN32 is 'close enough'. So a joint implementation
  * is provided. */
 
-#if defined(UA_ARCHITECTURE_POSIX) || defined(UA_ARCHITECTURE_WIN32)
+#if defined(UA_ARCHITECTURE_POSIX) || defined(UA_ARCHITECTURE_WIN32) || defined (UA_ARCHITECTURE_INOS)
 
 UA_EXPORT UA_EventLoop *
 UA_EventLoop_new_POSIX(const UA_Logger *logger);

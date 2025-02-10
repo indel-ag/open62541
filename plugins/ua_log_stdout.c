@@ -64,20 +64,20 @@ __attribute__((__format__(__printf__, 4 , 0)))
 static void
 UA_Log_Stdout_log(void *context, UA_LogLevel level, UA_LogCategory category,
                   const char *msg, va_list args) {
-#if defined(INOS)
-	UA_Log_Stdout_inos(level, logLevelNames[level], logCategoryNames[category], msg, args);
-#else
     /* MinLevel encoded in the context pointer */
     UA_LogLevel minLevel = (UA_LogLevel)(uintptr_t)context;
     if(minLevel > level)
         return;
 
-    UA_Int64 tOffset = UA_DateTime_localTimeUtcOffset();
-    UA_DateTimeStruct dts = UA_DateTime_toStruct(UA_DateTime_now() + tOffset);
-
     int logLevelSlot = ((int)level / 100) - 1;
     if(logLevelSlot < 0 || logLevelSlot > 5)
         logLevelSlot = 5; /* Set to fatal if the level is outside the range */
+
+#if defined(INOS)
+	UA_Log_Stdout_inos(level, logLevelNames[logLevelSlot], logCategoryNames[category], msg, args);
+#else
+    UA_Int64 tOffset = UA_DateTime_localTimeUtcOffset();
+    UA_DateTimeStruct dts = UA_DateTime_toStruct(UA_DateTime_now() + tOffset);
 
     /* Lock */
 #if UA_MULTITHREADING >= 100

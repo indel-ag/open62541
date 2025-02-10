@@ -27,6 +27,8 @@
 #include <stdio.h>
 #ifdef UA_ARCHITECTURE_WIN32
 # include <winsock2.h>
+#elif defined(UA_ARCHITECTURE_INOS)
+// nothing to include
 #else
 # include <unistd.h>
 #endif
@@ -308,6 +310,9 @@ setDefaultConfig(UA_ServerConfig *conf, UA_UInt16 portNumber) {
         if(tcpCM)
             conf->eventLoop->registerEventSource(conf->eventLoop, (UA_EventSource *)tcpCM);
 
+#if !defined(UA_ARCHITECTURE_INOS)
+      // TODO: port UDP and Interrupt connection manager to LwIP if needed
+
         /* Add the UDP connection manager */
         UA_ConnectionManager *udpCM =
             UA_ConnectionManager_new_POSIX_UDP(UA_STRING("udp connection manager"));
@@ -330,6 +335,8 @@ setDefaultConfig(UA_ServerConfig *conf, UA_UInt16 portNumber) {
             UA_LOG_WARNING(conf->logging, UA_LOGCATEGORY_USERLAND,
                            "Cannot create the Interrupt Manager (only relevant if used)");
         }
+#endif
+
 #ifdef UA_ENABLE_MQTT
         /* Add the MQTT connection manager */
         UA_ConnectionManager *mqttCM =
@@ -1131,9 +1138,12 @@ UA_ClientConfig_setDefault(UA_ClientConfig *config) {
         config->eventLoop->registerEventSource(config->eventLoop, (UA_EventSource *)tcpCM);
 
         /* Add the UDP connection manager */
+#if !defined(UA_ARCHITECTURE_INOS)
+      // TODO: port UDP connection manager to LwIP if needed
         UA_ConnectionManager *udpCM =
             UA_ConnectionManager_new_POSIX_UDP(UA_STRING("udp connection manager"));
         config->eventLoop->registerEventSource(config->eventLoop, (UA_EventSource *)udpCM);
+#endif
     }
 
     if(config->localConnectionConfig.recvBufferSize == 0)

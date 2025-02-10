@@ -112,7 +112,6 @@ processAsyncResults(UA_Server *server) {
         /* Pacify clang-analyzer */
         UA_assert(TAILQ_FIRST(&am->resultQueue) != ao);
         am->opsCount--;
-        UA_UNLOCK(&am->queueLock);
     }
     UA_UNLOCK(&am->queueLock);
     return count;
@@ -160,11 +159,6 @@ checkTimeouts(UA_Server *server, void *_) {
     }
 
     UA_UNLOCK(&am->queueLock);
-
-    /* Integrate async results and send out complete responses */
-    lockServer(server);
-    processAsyncResults(server);
-    unlockServer(server);
 }
 
 void
@@ -387,7 +381,9 @@ UA_Server_setAsyncOperationResult(UA_Server *server,
                  "Set the result from the worker thread");
 
     /* Integrate async results and send out complete responses */
-    processAsyncResults(server, NULL);
+    lockServer(server);
+    processAsyncResults(server);
+    unlockServer(server);
 }
 
 /******************/
@@ -520,7 +516,9 @@ UA_Server_getLastAsyncResponse(UA_Server *server) {
 UA_StatusCode
 UA_Server_sendAsyncResponse(UA_Server *server, UA_AsyncResponse *ar) {
     UA_AsyncManager *am = &server->asyncManager;
-    return UA_AsyncManager_sendAsyncResponse(am, server, ar);
+    UA_AsyncManager_sendAsyncResponse(am, server, ar);
+    // success
+    return 0;
 }
 
 #endif

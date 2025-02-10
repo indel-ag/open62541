@@ -525,7 +525,7 @@ cmpFD(const UA_FD *a, const UA_FD *b) {
 UA_StatusCode
 UA_EventLoopPOSIX_setNonBlocking(UA_FD sockfd) {
 #ifndef UA_ARCHITECTURE_WIN32
-    int opts = fcntl(sockfd, F_GETFL);
+    int opts = fcntl(sockfd, F_GETFL, 0);
     if(opts < 0 || fcntl(sockfd, F_SETFL, opts | O_NONBLOCK) < 0)
         return UA_STATUSCODE_BADINTERNALERROR;
 #else
@@ -550,7 +550,7 @@ UA_EventLoopPOSIX_setNoSigPipe(UA_FD sockfd) {
 UA_StatusCode
 UA_EventLoopPOSIX_setReusable(UA_FD sockfd) {
     int enableReuseVal = 1;
-#ifndef UA_ARCHITECTURE_WIN32
+#if !defined(UA_ARCHITECTURE_WIN32) && !defined(UA_ARCHITECTURE_INOS)
     int res = UA_setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
                             (const char*)&enableReuseVal, sizeof(enableReuseVal));
     res |= UA_setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT,
