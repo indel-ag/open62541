@@ -13,6 +13,9 @@
 import logging
 import argparse
 import sys
+import os
+# Ensure that this file can also import its local python files while running with a python that is running in isolated mode.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from datatypes import NodeId
 from nodeset import *
 

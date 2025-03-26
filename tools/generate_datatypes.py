@@ -5,6 +5,10 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 from __future__ import print_function
+import sys
+import os
+# Ensure that this file can also import its local module nodeset_compiler while running with a python that is running in isolated mode.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from nodeset_compiler.type_parser import CSVBSDTypeParser
 import nodeset_compiler.backend_open62541_typedefinitions as backend
 import argparse
